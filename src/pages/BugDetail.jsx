@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 const BUG_RCA_API_BASE =
-  (import.meta.env?.VITE_BUG_RCA_API_URL || 'https://appmanager-dev.up.railway.app').replace(/\/$/, '');
+  (import.meta.env?.VITE_BUG_RCA_API_URL ?? '').replace(/\/$/, '');
 
 /* ─── Helpers shared with BugReport ─── */
 const firstValue = (...values) =>

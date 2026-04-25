@@ -49,7 +49,7 @@ const FALLBACK_BUG_LOGS = [
 ];
 
 const BUG_RCA_API_BASE =
-  (import.meta.env.VITE_BUG_RCA_API_URL || 'https://appmanager-dev.up.railway.app').replace(/\/$/, '');
+  (import.meta.env.VITE_BUG_RCA_API_URL ?? '').replace(/\/$/, '');
 
 const menuItems = [
   { label: 'Home', icon: Home, path: '/', active: false },
