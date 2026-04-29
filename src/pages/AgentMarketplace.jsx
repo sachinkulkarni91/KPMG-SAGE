@@ -260,22 +260,22 @@ const AgentMarketplace = () => {
                     </p>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex flex-nowrap gap-2">
                       <button
                         onClick={() => handleWatchDemo(agent)}
-                        className="px-3 py-1.5 border border-[#0B3FBD] text-[#0B3FBD] font-semibold rounded text-[11px] bg-white"
+                        className="px-2.5 py-1.5 border border-[#0B3FBD] text-[#0B3FBD] font-semibold rounded text-[11px] bg-white whitespace-nowrap shrink-0"
                       >
                         ▶ Watch Demo
                       </button>
                       <button
                         onClick={() => handleExploreAgent(agent)}
-                        className="px-3 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px]"
+                        className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
                       >
                         Explore Agent
                       </button>
                       <button
                         onClick={() => handleExecuteAgent(agent.id)}
-                        className="px-3 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px]"
+                        className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
                       >
                         Execute Agent
                       </button>
@@ -318,22 +318,22 @@ const AgentMarketplace = () => {
                     </p>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex flex-nowrap gap-2">
                       <button
                         onClick={() => handleWatchDemo(agent)}
-                        className="px-3 py-1.5 border border-[#0B3FBD] text-[#0B3FBD] font-semibold rounded text-[11px] bg-white"
+                        className="px-2.5 py-1.5 border border-[#0B3FBD] text-[#0B3FBD] font-semibold rounded text-[11px] bg-white whitespace-nowrap shrink-0"
                       >
                         ▶ Watch Demo
                       </button>
                       <button
                         onClick={() => handleExploreAgent(agent)}
-                        className="px-3 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px]"
+                        className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
                       >
                         Explore Agent
                       </button>
                       <button
                         disabled
-                        className="px-3 py-1.5 bg-slate-300 text-slate-600 font-semibold rounded text-[11px] cursor-not-allowed"
+                        className="px-2.5 py-1.5 bg-slate-300 text-slate-600 font-semibold rounded text-[11px] cursor-not-allowed whitespace-nowrap shrink-0"
                       >
                         Coming Soon
                       </button>
