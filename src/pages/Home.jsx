@@ -1,102 +1,107 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const agents = [
-  {
-    id: 'incident-triage',
-    title: 'Intelligent Incident Triage',
-    category: 'Observability',
-    description: 'Any new incident/failure occurring in a repo, pipeline or cluster would be cross-referenced with previous logs of such incidents/failures. An alert, RCA and recommended solution would be provided by the agent.',
-    path: '/incident-triage',
-    disabled: false,
-    imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=600'
-  },
-  {
-    id: 'user-access',
-    title: 'User Access Management',
-    category: 'Operations',
-    description: 'Human-in-the-loop solution where an access request is approved or rejected based on user profiles and what resources are requested.',
-    path: '/user-access',
-    disabled: false,
-    imageUrl: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=600'
-  },
-  {
-    id: 'bug-report',
-    title: 'Bug Report/Log RCA',
-    category: 'Productivity',
-    description: 'Any bug reports or logs (image/text) can be inputted to generate a summary, RCA and possible solutions/impacts.',
-    path: '/bug-report',
-    disabled: false,
-    imageUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&q=80&w=600'
-  }
-];
+import { Sparkles, Send, MessageSquare } from 'lucide-react';
 
 const Home = () => {
   const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleActionClick = (path) => {
+    if (path === 'marketplace') {
+      navigate('/agent-marketplace');
+    } else {
+      navigate(path);
+    }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    // Search functionality can be implemented here
+  };
 
   return (
-    <div className="w-full flex justify-center py-16 px-4 sm:px-8 bg-white">
-      <div className="w-full max-w-6xl flex flex-col items-start font-sans">
+    <div className="w-full relative min-h-[calc(100vh-64px)]">
+       {/* Hero Section with Geometric Background */}
+       <div className="absolute inset-0 overflow-hidden bg-[#0A45C4]">
+         <svg
+        className="absolute inset-0 w-full h-full"
+        viewBox="0 0 1440 720"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden="true"
+         >
+        <rect width="1440" height="720" fill="#0A45C4" />
+        <polygon points="0,140 520,0 980,200 460,360" fill="#0E52E6" />
+        <polygon points="540,0 900,0 720,200 360,200" fill="#0B3FBD" />
+        <polygon points="920,0 1440,0 1440,300 1120,420" fill="#093BB2" />
+        <polygon points="0,420 420,260 760,520 300,720 0,720" fill="#0C49D3" />
+        <polygon points="640,360 1440,240 1440,720 720,720" fill="#073596" />
+        <polygon points="320,520 860,420 1180,640 520,720" fill="#0D56EE" />
+         </svg>
+       </div>
+
+      {/* Content */}
+      <div className="relative z-10 w-full h-full min-h-[calc(100vh-64px)] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-10 max-w-5xl mx-auto">
         
-        {/* Typo Section */}
-        <div className="mb-4 w-full">
-          <h2 className="text-[2.75rem] leading-tight font-serif font-bold text-[#1e293b] mb-6">
-            Smart Automated Generative Engine
-          </h2>
-          
-          <p className="text-[#475569] text-[15px] sm:text-[17px] leading-[1.8] text-justify md:text-left w-full max-w-[95%]">
-            This Agentic AI Platform is a next-generation framework designed to build, deploy, and orchestrate intelligent agents that think, act, and collaborate autonomously to solve complex real-world tasks. By combining the power of large language models, specialized tools, and structured reasoning, the platform enables seamless coordination between multiple agents and systems—paving the way for fully automated workflows and intelligent decision-making at scale.
-          </p>
-        </div>
+        {/* Main Headline */}
+        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[32px] font-bold text-white mb-6 tracking-wide whitespace-nowrap drop-shadow-md flex items-center justify-center gap-3">
+          Curate <span className="font-medium opacity-90">|</span> Collaborate <span className="font-medium opacity-90">|</span> Transform
+        </h1>
+        
+        {/* Tagline */}
+        <p className="text-base sm:text-[15px] text-white font-medium mb-12 drop-shadow-sm">
+          Leveraging AI Agents to Enhance Your Platform Experience
+        </p>
 
-        {/* Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mt-10">
-          {agents.map((agent) => (
-            <div 
-              key={agent.id}
-              className="bg-white border border-slate-200 hover:shadow-lg transition-shadow flex flex-col cursor-pointer group rounded-none"
-              onClick={() => !agent.disabled && navigate(agent.path)}
+        {/* Search Bar */}
+        <form onSubmit={handleSearch} className="w-full max-w-4xl mb-10 z-10 relative">
+          <div className="relative flex items-center bg-white rounded-full shadow-lg overflow-hidden h-12 sm:h-14 px-4">
+            <Sparkles size={25} className="text-[#0033E6] mr-3" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Ask Now Assist for help or search"
+              className="flex-1 bg-transparent text-gray-800 placeholder-gray-500 font-medium focus:outline-none text-base sm:text-[17px] h-full"
+            />
+            <button
+              type="submit"
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors flex items-center justify-center mr-1"
             >
-              <div className="w-full h-[220px] overflow-hidden">
-                <img 
-                  src={agent.imageUrl} 
-                  alt={agent.title} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
-                />
-              </div>
-              <div className="p-6 sm:p-8 flex flex-col flex-grow">
-                <h4 className="text-[#6B46FF] text-xs font-semibold uppercase tracking-wider mb-5">
-                  {agent.category}
-                </h4>
-                
-                <div className="flex items-start mb-4">
-                  <div className="w-[4px] min-h-[1.5rem] bg-[#00E5CC] mr-3 mt-1.5 flex-shrink-0"></div>
-                  <h3 className="text-[22px] font-bold text-[#1e293b] leading-tight">
-                    {agent.title}
-                  </h3>
-                </div>
-                
-                <p className="text-[#475569] text-[16px] leading-relaxed mb-10 flex-grow mt-2">
-                  {agent.description}
-                </p>
-                
-                <div className="mt-auto">
-                  <span 
-                    className={`font-semibold text-sm flex items-center transition-colors ${
-                      agent.disabled 
-                        ? 'text-slate-400'
-                        : 'text-[#00338D] group-hover:text-[#181180]'
-                    }`}
-                  >
-                    Read more <span className="ml-[6px] text-[16px] leading-none mb-0.5 font-bold">&rsaquo;</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+              <Send size={20} className="text-gray-400" />
+            </button>
+          </div>
+        </form>
 
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center w-full max-w-3xl z-10 relative">
+          <button
+            type="button"
+            onClick={() => handleActionClick('/incident-triage')}
+            className="px-5 py-2.5 min-w-[150px] bg-white text-[#0033E6] font-semibold rounded-md hover:bg-blue-50 transition-colors shadow-md text-sm"
+          >
+            Start Assessment
+          </button>
+          <button
+            type="button"
+            onClick={() => handleActionClick('marketplace')}
+            className="px-5 py-2.5 min-w-[150px] bg-white text-[#0033E6] font-semibold rounded-md hover:bg-blue-50 transition-colors shadow-md text-sm"
+          >
+            Suggest Agent
+          </button>
+          <button
+            type="button"
+            onClick={() => handleActionClick('marketplace')}
+            className="px-5 py-2.5 min-w-[150px] bg-white text-[#0033E6] font-semibold rounded-md hover:bg-blue-50 transition-colors shadow-md text-sm"
+          >
+            View All Agents
+          </button>
+        </div>
       </div>
+
+      {/* Floating Chat Icon */}
+      <button className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-br from-[#A5A0DC] to-[#938DCD] rounded-full shadow-2xl flex items-center justify-center border-[3px] border-white/20 hover:scale-105 transition-transform z-50">
+        <MessageSquare size={26} className="text-white fill-white mt-1 mr-0.5" />
+      </button>
     </div>
   );
 };

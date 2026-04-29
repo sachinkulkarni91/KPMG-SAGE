@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 
 const BUG_RCA_API_BASE =
-  (import.meta.env?.VITE_BUG_RCA_API_URL ?? '').replace(/\/$/, '');
+  (import.meta.env?.VITE_BACKEND_BASE_URL ?? '').replace(/\/$/, '');
 
 /* ─── Helpers shared with BugReport ─── */
 const firstValue = (...values) =>
@@ -556,10 +556,10 @@ export default function BugDetail() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+        <div className="grid gap-5 items-start lg:grid-cols-[240px_1fr]">
 
           {/* ════════════════ SIDEBAR ════════════════ */}
-          <aside className="flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm h-fit lg:sticky lg:top-24">
+          <aside className="order-2 lg:order-1 flex flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm h-fit lg:sticky lg:top-24">
             <div className="mb-4 border-b border-slate-200 pb-3">
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Workspace</p>
               <p className="mt-1 text-sm font-bold text-slate-800">Agent Modules</p>
@@ -611,7 +611,7 @@ export default function BugDetail() {
           </aside>
 
           {/* ════════════════ MAIN CONTENT ════════════════ */}
-          <section className="min-w-0 space-y-4">
+          <section className="order-1 lg:order-2 min-w-0 space-y-4">
 
             {/* Error message banner */}
             {errorMsg && (

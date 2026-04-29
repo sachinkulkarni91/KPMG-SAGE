@@ -1,43 +1,121 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { Bot, ChevronDown } from 'lucide-react';
+import { ChevronDown, User } from 'lucide-react';
 import Home from './pages/Home';
 import IncidentTriage from './pages/IncidentTriage';
 import UserAccess from './pages/UserAccess';
 import BugReport from './pages/BugReport';
 import BugDetail from './pages/BugDetail';
+import AgentMarketplace from './pages/AgentMarketplace';
+import AgentDetail from './pages/AgentDetail';
 
 function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans bg-[#F4F7FB] text-slate-900 selection:bg-indigo-100 selection:text-indigo-900">
-      <header className="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-100">
-        <div className="px-6 py-4 flex justify-between items-center w-full">
-          <Link to="/" className="flex items-center group w-[20%]">
+      <header className="sticky top-0 z-50 bg-[#03307f] shadow-lg">
+        <div className="w-full px-4 sm:px-6 py-1 flex items-center justify-between">
+          {/* Logo and Branding */}
+          <Link to="/" className="flex items-center gap-0">
             <img
-              src="/logo.svg"
-              alt="KPMG Logo"
-              className="h-10 object-contain rounded"
+              src="/ChatGPT%20Image%20Apr%2028,%202026,%2001_48_50%20PM.png"
+              alt="Kurate AI Logo"
+              className="h-12 md:h-14 lg:h-16 object-contain"
             />
+            <span className="text-white font-bold text-xl sm:text-[18px] tracking-wide">Kurate AI</span>
           </Link>
 
-          <nav className="flex-1 flex justify-center items-center gap-10">
-            <Link to="/" className="text-[13px] font-semibold text-slate-500 hover:text-slate-900 transition-colors">Homepage</Link>
-            <a href="#" className="text-[13px] font-semibold text-slate-500 hover:text-slate-900 transition-colors">About us</a>
-            <a href="#" className="text-[13px] font-semibold text-slate-500 hover:text-slate-900 transition-colors">Developer Console (beta)</a>
-            <a href="#" className="text-[13px] font-semibold text-slate-500 hover:text-slate-900 transition-colors">Insights (beta)</a>
+          {/* Navigation */}
+          <nav className="hidden lg:flex flex-1 items-center px-6 h-full">
+            <a href="#" className="text-white text-sm font-medium transition-colors py-4 px-3 hover:bg-[#022055]">Overview</a>
+
+            <div className="ml-auto flex items-center gap-2 pr-0">
+              <div className="relative group cursor-pointer h-full">
+                <div className="flex items-center gap-1 text-white text-sm font-medium transition-colors py-4 px-3 group-hover:bg-[#022055]">
+                  <span>Industry</span>
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <div className="absolute top-full left-0 w-64 bg-[#1a2227] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="py-2 flex flex-col">
+                    {['Support', 'Security', 'Development', 'Productivity', 'QA'].map((item) => (
+                      <Link
+                        key={item}
+                        to={`/agent-marketplace?industry=${item.toLowerCase()}`}
+                        className="block px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                      >
+                        {item}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group cursor-pointer h-full">
+                <div className="flex items-center gap-1 text-white text-sm font-medium transition-colors py-4 px-3 group-hover:bg-[#022055]">
+                  <span>Function</span>
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <div className="absolute top-full left-0 w-64 bg-[#1a2227] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="py-2 flex flex-col">
+                    {['Categorize', 'Manage', 'Track', 'Testing'].map((item) => (
+                      <Link
+                        key={item}
+                        to={`/agent-marketplace?function=${item.toLowerCase()}`}
+                        className="block px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                      >
+                        {item}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative group cursor-pointer h-full">
+                <div className="flex items-center gap-1 text-white text-sm font-medium transition-colors py-4 px-3 group-hover:bg-[#022055]">
+                  <span>Personas</span>
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <div className="absolute top-full left-0 w-64 bg-[#1a2227] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="py-2 flex flex-col">
+                    {['IT Service Desk Agent', 'ITSM Process Owner', 'Procurement Operations Analyst', 'Supplier Relationship Manager', 'S2P Workflow Designer', 'HR Case Manager', 'HR Operations Lead', 'Risk & Compliance Analyst', 'GRC Architect', 'Policy Manager', 'Security Incident Responder', 'Threat Intelligence Analyst', 'Change Manager', 'Governance Lead'].map((persona) => (
+                      <Link
+                        key={persona}
+                        to={`/agent-marketplace?personas=${encodeURIComponent(persona)}`}
+                        className="block px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+                      >
+                        {persona}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <a href="#" className="text-white text-sm font-medium transition-colors py-4 px-3 hover:bg-[#022055]">Powered</a>
+
+              <div className="relative group cursor-pointer h-full">
+                <div className="flex items-center gap-1 text-white text-sm font-medium transition-colors py-4 px-3 group-hover:bg-[#022055]">
+                  <span>Resources</span>
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <div className="absolute top-full left-0 w-64 bg-[#1a2227] shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
+                  <div className="py-2 flex flex-col">
+                    {['Documentation', 'API Reference', 'Support', 'Community'].map((item) => (
+                      <a key={item} href="#" className="block px-4 py-2 text-xs font-medium text-slate-200 hover:bg-slate-200 hover:text-slate-900 transition-colors">
+                        {item}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </nav>
 
-          <div className="flex justify-end items-center gap-3 w-[20%]">
-            <button className="inline-flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100">
-              <Bot className="h-4 w-4" />
-              AI Assistant
-              <span className="text-xs">✦</span>
+          {/* Right Side Actions */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button className="h-8 w-8 rounded-full flex items-center justify-center overflow-hidden border-2 border-blue-300 bg-slate-200">
+              <User className="h-5 w-5 text-slate-500" />
             </button>
-            <button className="h-8 w-8 rounded-full overflow-hidden border-2 border-slate-200">
-              <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User Profile" className="h-full w-full object-cover bg-amber-100" />
-            </button>
-            <button className="text-slate-500 hover:text-slate-800">
-              <ChevronDown className="h-4 w-4" />
-            </button>
+            <div className="hidden sm:flex items-center gap-2">
+              <span className="text-white text-xs font-medium">Sachin</span>
+            </div>
           </div>
         </div>
       </header>
@@ -49,12 +127,14 @@ function App() {
           <Route path="/user-access" element={<UserAccess />} />
           <Route path="/bug-report" element={<BugReport />} />
           <Route path="/bug-report/:bugId" element={<BugDetail />} />
+          <Route path="/agent-marketplace" element={<AgentMarketplace />} />
+          <Route path="/agent-detail/:agentId" element={<AgentDetail />} />
         </Routes>
       </main>
 
       <footer className="bg-white border-t border-slate-200 py-8 mt-auto">
-        <div className="container mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-sm text-slate-500">&copy; 2026 KPMG sage. All rights reserved.</p>
+        <div className="container mx-auto px-4 sm:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-sm text-slate-500 text-center md:text-left">&copy; 2026 Kurate AI. All rights reserved.</p>
           <div className="flex gap-4 text-sm text-slate-500">
             <a href="#" className="hover:text-indigo-600 transition">Documentation</a>
             <a href="#" className="hover:text-indigo-600 transition">Support</a>

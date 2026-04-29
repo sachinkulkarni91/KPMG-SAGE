@@ -16,7 +16,7 @@ const FALLBACK_ACCESS_REQUESTS = [
 ];
 
 const USER_ACCESS_API_BASE =
-  (import.meta.env?.VITE_USER_ACCESS_API_URL ?? '').replace(/\/$/, '');
+  (import.meta.env?.VITE_BACKEND_BASE_URL ?? '').replace(/\/$/, '');
 
 const menuItems = [
   { label: 'Home', icon: Home, path: '/', active: false },
@@ -431,8 +431,8 @@ export default function UserAccess() {
   return (
     <div className="w-full bg-white py-4 sm:py-6">
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+        <div className="grid gap-6 items-start lg:grid-cols-[260px_1fr]">
+          <aside className="order-2 lg:order-1 border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
             <div className="mb-4 border-b border-slate-200 pb-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Workspace</p>
               <p className="mt-1 text-sm font-semibold text-slate-700">Agent Modules</p>
@@ -476,10 +476,10 @@ export default function UserAccess() {
             </div>
           </aside>
 
-          <section className="border border-slate-200 bg-white p-6 sm:p-7">
-            <div className="mb-6 pb-5 border-b border-slate-100 flex items-start justify-between">
+          <section className="order-1 lg:order-2 border border-slate-200 bg-white p-4 sm:p-7">
+            <div className="mb-6 pb-5 border-b border-slate-100 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-[32px] leading-tight font-serif font-bold text-[#1e293b]">User Access Management</h2>
+                <h2 className="text-2xl sm:text-[32px] leading-tight font-sans font-bold text-[#1e293b]">User Access Management</h2>
                 <p className="mt-1 text-sm text-slate-500">Manage and approve access requests</p>
                 {apiStatus && <div className="mt-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">{apiStatus}</div>}
               </div>

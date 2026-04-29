@@ -49,7 +49,7 @@ const FALLBACK_BUG_LOGS = [
 ];
 
 const BUG_RCA_API_BASE =
-  (import.meta.env.VITE_BUG_RCA_API_URL ?? '').replace(/\/$/, '');
+  (import.meta.env.VITE_BACKEND_BASE_URL ?? '').replace(/\/$/, '');
 
 const menuItems = [
   { label: 'Home', icon: Home, path: '/', active: false },
@@ -276,6 +276,7 @@ const BugReport = () => {
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [assistantLastDepth, setAssistantLastDepth] = useState('detailed');
   const [assistantLatestResult, setAssistantLatestResult] = useState(null);
+  const [assistantConversation, setAssistantConversation] = useState([]);
 
   const serviceOptions = useMemo(() => {
     const services = [...new Set(bugLogs.map((entry) => entry.module).filter(Boolean))];
@@ -552,6 +553,14 @@ const BugReport = () => {
       setAssistantQuestion(trimmed);
       setAssistantLastDepth('detailed');
       setAssistantLatestResult(payload);
+      setAssistantConversation((current) => [
+        ...current,
+        {
+          id: `${Date.now()}-${current.length + 1}`,
+          question: trimmed,
+          result: payload,
+        },
+      ]);
       setAnalysisResult(normalizedResult);
       pushHistory('match-detailed', normalizedResult);
       setShowHistory(true);
@@ -633,8 +642,8 @@ const BugReport = () => {
       />
 
       <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-          <aside className="border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
+        <div className="grid gap-6 items-start lg:grid-cols-[260px_1fr]">
+          <aside className="order-2 lg:order-1 border border-slate-200 bg-gradient-to-b from-white to-slate-50 p-4 shadow-sm">
             <div className="mb-4 border-b border-slate-200 pb-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Workspace</p>
               <p className="mt-1 text-sm font-semibold text-slate-700">Agent Modules</p>
@@ -678,14 +687,14 @@ const BugReport = () => {
             </div>
           </aside>
 
-          <section className="border border-slate-200 bg-white p-6 sm:p-7">
+          <section className="order-1 lg:order-2 border border-slate-200 bg-white p-4 sm:p-7">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-5">
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center bg-amber-50 text-amber-600">
                   <Bug className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="text-[32px] leading-tight font-serif font-bold text-[#1e293b]">Bug Logs Summary & RCA</h2>
+                  <h2 className="text-2xl sm:text-[32px] leading-tight font-sans font-bold text-[#1e293b]">Bug Logs Summary & RCA</h2>
                   <p className="mt-1 text-sm text-slate-500">Get AI-powered summaries and root cause analysis from bug logs.</p>
                   <p className="mt-1 text-xs text-slate-400">
                     Service: {firstValue(serviceInfo?.service, 'bug_rca')} | Health: {String(healthStatus)}
@@ -852,7 +861,7 @@ const BugReport = () => {
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h3 className="text-[32px] leading-tight font-serif font-bold text-[#1e293b]">Bug Logs ({visibleLogs.length})</h3>
+                <h3 className="text-2xl sm:text-[32px] leading-tight font-sans font-bold text-[#1e293b]">Bug Logs ({visibleLogs.length})</h3>
                 <p className="text-sm text-slate-500">AI-processed bug logs with summaries and RCA</p>
                 {isLoading ? <p className="mt-1 text-xs text-slate-400">Syncing bug logs from backend...</p> : null}
                 {apiMessage ? <p className="mt-1 text-xs text-amber-600">{apiMessage}</p> : null}
@@ -944,7 +953,7 @@ const BugReport = () => {
       </div>
 
       {showAIAssistant ? (
-        <aside className="fixed right-6 top-24 z-50 flex w-80 max-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.18)]">
+        <aside className="fixed left-3 right-3 top-20 z-50 flex w-auto max-h-[calc(100vh-6rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_50px_rgba(15,23,42,0.18)] sm:left-auto sm:right-6 sm:top-24 sm:w-80 sm:max-h-[calc(100vh-7rem)]">
           <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-violet-600" />
@@ -997,35 +1006,46 @@ const BugReport = () => {
               </div>
             </div>
 
-            {assistantLatestResult?.matched_scenario ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] text-slate-700">
-                <p className="font-semibold text-slate-900">Matched Scenario</p>
-                <p className="mt-1 text-slate-700">{firstValue(assistantLatestResult.matched_scenario.scenario_name, assistantLatestResult.matched_scenario.scenario_id, 'Unknown scenario')}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Score: {Math.round(Number(assistantLatestResult.matched_scenario.match_score || 0) * 100)}% | Primary Error:{' '}
-                  {firstValue(assistantLatestResult.matched_scenario.primary_error_type, 'N/A')}
-                </p>
-                {Array.isArray(assistantLatestResult.timeline) && assistantLatestResult.timeline.length ? (
-                  <div className="mt-2 border-t border-slate-200 pt-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Timeline</p>
-                    {assistantLatestResult.timeline.slice(0, 3).map((entry, idx) => (
-                      <p key={`${entry.time || idx}-${idx}`} className="mt-1 text-xs text-slate-600">
-                        {firstValue(entry.time, 'Unknown time')}: {firstValue(entry.event, 'Event recorded')}
-                      </p>
-                    ))}
-                  </div>
-                ) : null}
+            {assistantConversation.map((message) => {
+              const result = message.result;
+              if (!result?.matched_scenario) return null;
 
-                {Array.isArray(assistantLatestResult.immediate_actions) && assistantLatestResult.immediate_actions.length ? (
-                  <div className="mt-2 border-t border-slate-200 pt-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Immediate Actions</p>
-                    {assistantLatestResult.immediate_actions.slice(0, 3).map((action, idx) => (
-                      <p key={`${action}-${idx}`} className="mt-1 text-xs text-slate-600">{idx + 1}. {action}</p>
-                    ))}
+              return (
+                <div key={message.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] text-slate-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">You</p>
+                  <p className="mt-1 text-slate-800">{message.question}</p>
+
+                  <div className="mt-3 border-t border-slate-200 pt-3">
+                    <p className="font-semibold text-slate-900">Matched Scenario</p>
+                    <p className="mt-1 text-slate-700">{firstValue(result.matched_scenario.scenario_name, result.matched_scenario.scenario_id, 'Unknown scenario')}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Score: {Math.round(Number(result.matched_scenario.match_score || 0) * 100)}% | Primary Error:{' '}
+                      {firstValue(result.matched_scenario.primary_error_type, 'N/A')}
+                    </p>
+
+                    {Array.isArray(result.timeline) && result.timeline.length ? (
+                      <div className="mt-2 border-t border-slate-200 pt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Timeline</p>
+                        {result.timeline.slice(0, 3).map((entry, idx) => (
+                          <p key={`${message.id}-timeline-${entry.time || idx}-${idx}`} className="mt-1 text-xs text-slate-600">
+                            {firstValue(entry.time, 'Unknown time')}: {firstValue(entry.event, 'Event recorded')}
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {Array.isArray(result.immediate_actions) && result.immediate_actions.length ? (
+                      <div className="mt-2 border-t border-slate-200 pt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Immediate Actions</p>
+                        {result.immediate_actions.slice(0, 3).map((action, idx) => (
+                          <p key={`${message.id}-action-${idx}`} className="mt-1 text-xs text-slate-600">{idx + 1}. {action}</p>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            ) : null}
+                </div>
+              );
+            })}
           </div>
 
           <div className="border-t border-slate-200 bg-white px-4 py-3">

@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Bot,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  RefreshCw,
   ChevronRight,
   Home,
   LifeBuoy,
@@ -19,16 +23,326 @@ const menuItems = [
   { label: 'Settings', icon: Settings, active: false, path: null },
 ];
 
-const tabs = ['AI RCA', 'Evidence', 'Recommendations', 'Timeline', 'Similar Incidents', 'Activity'];
+
+const INCIDENT_TRIAGE_API_BASE =
+  (import.meta.env?.VITE_BACKEND_BASE_URL ?? '').replace(/\/$/, '');
+
+const firstValue = (...values) => values.find((value) => value !== undefined && value !== null && value !== '');
+
+const extractIncidentsArray = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.incidents)) return payload.incidents;
+  if (Array.isArray(payload?.results)) return payload.results;
+  if (Array.isArray(payload?.value)) return payload.value;
+  return [];
+};
+
+const extractIncidentNumber = (value, fallback) => {
+  const text = String(firstValue(value, fallback, ''));
+  const numericPart = Number(text.replace(/\D/g, ''));
+  if (Number.isFinite(numericPart) && numericPart > 0) return numericPart;
+  const directNumber = Number(text);
+  if (Number.isFinite(directNumber) && directNumber > 0) return directNumber;
+  return 1000 + fallback;
+};
+
+const normalizeIncident = (item, index) => ({
+  id: String(firstValue(item.number, item.incident_id, item.id, item.request_id, `INC-${1000 + index}`)),
+  number: extractIncidentNumber(firstValue(item.number, item.incident_number, item.incident_no, item.incident_id, item.id, item.request_id), index),
+  incidentNumber: extractIncidentNumber(firstValue(item.number, item.incident_number, item.incident_no, item.incident_id, item.id, item.request_id), index),
+  service: String(firstValue(item.assigned_to, item.service, item.source, item.component, item.module, 'unknown-service')),
+  title: String(firstValue(item.short_description, item.title, item.error_message, item.summary, item.description, 'No incident title provided')),
+  summary: String(firstValue(item.short_description, item.summary, item.details, 'No additional context available')),
+  severity: String(firstValue(item.severity, item.priority, 'Medium')),
+  status: String(firstValue(item.state, item.status, 'Open')),
+  timestamp: firstValue(item.timestamp, item.created_at, item.updated_at, null),
+  raw: item,
+});
+
+const formatDateTime = (value) => {
+  if (!value) return 'N/A';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed);
+};
+
+const severityTone = (value) => {
+  const key = String(value || '').toLowerCase();
+  if (key.includes('critical')) return { chip: 'bg-rose-100 text-rose-700', dot: 'bg-rose-500' };
+  if (key.includes('high')) return { chip: 'bg-rose-100 text-rose-600', dot: 'bg-rose-500' };
+  if (key.includes('medium')) return { chip: 'bg-amber-100 text-amber-600', dot: 'bg-amber-500' };
+  return { chip: 'bg-emerald-100 text-emerald-600', dot: 'bg-emerald-500' };
+};
+
+const statusTone = (value) => {
+  const key = String(value || '').toLowerCase();
+  if (key.includes('open')) return 'bg-sky-100 text-sky-600';
+  if (key.includes('progress')) return 'bg-indigo-100 text-indigo-600';
+  if (key.includes('resolve') || key.includes('close')) return 'bg-emerald-100 text-emerald-600';
+  return 'bg-sky-100 text-sky-600';
+};
 
 const IncidentTriage = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('AI RCA');
+  const [rootInfo, setRootInfo] = useState(null);
+  const [incidents, setIncidents] = useState([]);
+  const [selectedIncidentId, setSelectedIncidentId] = useState('');
+  const [analysisById, setAnalysisById] = useState({});
+  const [statusFilter, setStatusFilter] = useState('Open');
+  const [loading, setLoading] = useState(true);
+  const [analyzingId, setAnalyzingId] = useState('');
+  const [resolvingId, setResolvingId] = useState('');
+  const [apiMessage, setApiMessage] = useState('');
+
+  const selectedIncident = useMemo(
+    () => incidents.find((incident) => incident.id === selectedIncidentId) || null,
+    [incidents, selectedIncidentId]
+  );
+
+  const selectedAnalysis = selectedIncidentId ? analysisById[selectedIncidentId] : null;
+
+  const stats = useMemo(() => {
+    const openCount = incidents.filter((incident) => {
+      const key = String(incident.status).toLowerCase();
+      return key.includes('open') || key.includes('progress');
+    }).length;
+    const resolvedCount = incidents.length - openCount;
+    const criticalCount = incidents.filter((incident) => String(incident.severity).toLowerCase().includes('critical')).length;
+    const highCount = incidents.filter((incident) => String(incident.severity).toLowerCase().includes('high')).length;
+    return {
+      total: incidents.length,
+      open: openCount,
+      resolved: resolvedCount,
+      critical: criticalCount,
+      high: highCount,
+    };
+  }, [incidents]);
+
+  const fetchRootInfo = async (signal) => {
+    const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (!response.ok) throw new Error(`Root API failed: ${response.status}`);
+    const payload = await response.json();
+    setRootInfo(payload);
+  };
+
+  const fetchIncidents = async (status = 'Open', signal) => {
+    const query = `?status=${encodeURIComponent(status || 'Open')}`;
+    const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/get-incidents${query}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (!response.ok) throw new Error(`Get incidents API failed: ${response.status}`);
+    const payload = await response.json();
+    const normalized = extractIncidentsArray(payload).map((item, index) => normalizeIncident(item, index));
+    setIncidents(normalized);
+    if (normalized.length > 0) {
+      setSelectedIncidentId((prev) => (prev && normalized.some((incident) => incident.id === prev) ? prev : normalized[0].id));
+    } else {
+      setSelectedIncidentId('');
+    }
+  };
+
+  const refreshAll = async (status = statusFilter) => {
+    if (!INCIDENT_TRIAGE_API_BASE) {
+      setApiMessage('Missing VITE_INCIDENT_TRIAGE_API_URL in environment configuration.');
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    try {
+      setLoading(true);
+      setApiMessage('');
+      await Promise.all([
+        fetchRootInfo(controller.signal),
+        fetchIncidents(status, controller.signal),
+      ]);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setApiMessage(error.message || 'Unable to reach incident triage APIs right now.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshAll('Open');
+  }, []);
+
+  const handleStatusFilterChange = async (nextStatus) => {
+    setStatusFilter(nextStatus);
+    if (!INCIDENT_TRIAGE_API_BASE) {
+      setApiMessage('Missing VITE_INCIDENT_TRIAGE_API_URL in environment configuration.');
+      return;
+    }
+
+    const controller = new AbortController();
+    try {
+      setLoading(true);
+      setApiMessage('');
+      await fetchIncidents(nextStatus, controller.signal);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setApiMessage(error.message || 'Failed to load incidents for selected status.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnalyze = async (incident) => {
+    if (!incident || !INCIDENT_TRIAGE_API_BASE) return;
+    setAnalyzingId(incident.id);
+    setSelectedIncidentId(incident.id);
+    setApiMessage('');
+    console.log(incident,"incident")
+    const incidentId = incident.id;
+    try {
+      const response = await fetch(
+        `${INCIDENT_TRIAGE_API_BASE}/incident-triage/analyze?incident_id=${encodeURIComponent(incidentId)}`,
+        {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          req_id: incidentId,
+          status: incident.status,
+        }),
+        }
+      );
+
+      if (!response.ok) {
+        let detail = `Analyze API failed: ${response.status}`;
+        try {
+          const errPayload = await response.json();
+          detail = firstValue(errPayload?.detail, errPayload?.message, detail);
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(detail);
+      }
+
+      const payload = await response.json();
+      setAnalysisById((prev) => ({ ...prev, [incident.id]: payload }));
+      setActiveTab('AI RCA');
+    } catch (error) {
+      setApiMessage(error.message || 'Failed to analyze incident.');
+    } finally {
+      setAnalyzingId('');
+    }
+  };
+
+  const handleResolve = async (incident) => {
+    if (!incident || !INCIDENT_TRIAGE_API_BASE) return;
+    setResolvingId(incident.id);
+    setApiMessage('');
+    const incidentId = incident.id;
+
+    try {
+      const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/resolve`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          incident_id: incidentId,
+          resolution: 'Resolved via Incident Triage UI',
+          status: 'RESOLVED',
+        }),
+      });
+
+      if (!response.ok) {
+        let detail = `Resolve API failed: ${response.status}`;
+        try {
+          const errPayload = await response.json();
+          detail = firstValue(errPayload?.detail, errPayload?.message, detail);
+        } catch {
+          // ignore parse errors
+        }
+        throw new Error(detail);
+      }
+
+      setIncidents((prev) =>
+        prev.map((item) => (item.id === incident.id ? { ...item, status: 'Resolved' } : item))
+      );
+    } catch (error) {
+      setApiMessage(error.message || 'Failed to resolve incident.');
+    } finally {
+      setResolvingId('');
+    }
+  };
+
+  const confidencePercent = Math.round(
+    Number(
+      firstValue(
+        selectedAnalysis?.confidence_score,
+        selectedAnalysis?.analysis?.confidence_score,
+        selectedAnalysis?.confidence,
+        0
+      )
+    ) * 100
+  );
+
+  const rootCauseText = firstValue(
+    selectedAnalysis?.analysis?.root_cause,
+    selectedAnalysis?.root_cause,
+    selectedAnalysis?.analysis_summary,
+    selectedAnalysis?.summary,
+    selectedIncident?.title,
+    'Select an incident and click Analyze to generate AI RCA.'
+  );
+
+  const evidenceItems = firstValue(
+    selectedAnalysis?.evidence,
+    selectedAnalysis?.analysis?.related_errors,
+    []
+  );
+
+  const recommendationItems = firstValue(
+    selectedAnalysis?.recommendations,
+    selectedAnalysis?.analysis?.recommendations,
+    []
+  );
+
+  const timelineItems = firstValue(
+    selectedAnalysis?.timeline,
+    selectedAnalysis?.analysis?.timeline,
+    []
+  );
+
+  const similarItems = firstValue(
+    selectedAnalysis?.similar_incidents,
+    selectedAnalysis?.analysis?.similar_incidents,
+    []
+  );
+
+  const activityItems = firstValue(
+    selectedAnalysis?.activity,
+    selectedAnalysis?.analysis?.activity,
+    []
+  );
 
   return (
     <div className="w-full bg-[#f5f7fb] px-4 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto grid max-w-[1450px] gap-5 lg:grid-cols-[256px_minmax(0,1fr)]">
-        <aside className="border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+      <div className="mx-auto grid max-w-[1450px] gap-5 items-start lg:grid-cols-[256px_minmax(0,1fr)]">
+        <aside className="order-2 lg:order-1 border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
           <div className="space-y-1 px-4 pb-4 pt-3">
             {menuItems.map((item) => {
               const Icon = item.icon;
@@ -56,16 +370,6 @@ const IncidentTriage = () => {
           <div className="border-t border-slate-200 px-4 pb-4 pt-5">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Support</p>
             <div className="space-y-3">
-              <button
-                type="button"
-                className="flex w-full items-center gap-3 rounded-lg border border-indigo-100 bg-[#eef2ff] px-3 py-3 text-left text-sm font-semibold text-[#3b4fd1] shadow-sm"
-              >
-                <span className="flex h-5 w-5 items-center justify-center text-[#5b4cf2]">
-                  <Bot className="h-4 w-4" />
-                </span>
-                <span>Assist AI</span>
-                <span className="ml-auto rounded-md bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7281e6]">beta</span>
-              </button>
 
               <button
                 type="button"
@@ -80,98 +384,201 @@ const IncidentTriage = () => {
           </div>
         </aside>
 
-        <section className="min-w-0 border border-slate-200 bg-white px-4 pb-6 pt-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-5">
-          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-6 sm:py-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#6d38f5] text-white shadow-[0_8px_20px_rgba(109,56,245,0.2)]">
-                <Bot className="h-6 w-6" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <h2 className="flex items-center gap-2 text-[23px] font-semibold leading-tight text-slate-900 sm:text-[27px]">
-                  <span>AI Analysis Complete</span>
-                  <span className="text-[18px] text-slate-900">✦</span>
-                </h2>
-                <p className="mt-1 text-[14px] leading-6 text-slate-600 sm:text-[15px]">
-                  Our AI engine analyzed 12,842 log lines, 8 related services and 23 similar incidents to generate this report.
-                </p>
-              </div>
+        <section className="order-1 lg:order-2 min-w-0 border border-slate-200 bg-white px-4 pb-6 pt-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:px-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <h2 className="text-2xl sm:text-[30px] leading-tight font-sans font-bold text-[#1e293b]">Intelligent Incident Triage</h2>
+              <p className="mt-1 text-sm text-slate-500">Integrated with incident triage APIs for fetch, analyze, and resolve workflows.</p>
             </div>
 
-            <div className="mt-6">
-              <p className="text-[15px] font-semibold text-slate-900">AI Confidence Score</p>
+            <button
+              type="button"
+              onClick={() => refreshAll(statusFilter)}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
 
-              <div className="mt-2 flex flex-col gap-3 xl:flex-row xl:items-center xl:gap-3">
-                <div className="flex items-end gap-3">
-                  <span className="text-[38px] font-semibold leading-none tracking-tight text-slate-900">92%</span>
-                  <span className="mb-2 hidden h-2 w-2 rounded-full bg-[#7c3aed] xl:block" />
-                </div>
+          {apiMessage ? (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              {apiMessage}
+            </div>
+          ) : null}
 
-                <div className="flex-1">
-                  <div className="h-3 rounded-full bg-slate-100">
-                    <div className="h-full w-[92%] rounded-full bg-[#7c3aed]" />
-                  </div>
-                </div>
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">Total</p>
+              <p className="mt-1 text-2xl font-bold text-slate-900">{stats.total}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">Open</p>
+              <p className="mt-1 text-2xl font-bold text-indigo-700">{stats.open}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">Resolved</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-700">{stats.resolved}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">Critical</p>
+              <p className="mt-1 text-2xl font-bold text-rose-700">{stats.critical}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <p className="text-xs text-slate-500">High</p>
+              <p className="mt-1 text-2xl font-bold text-amber-700">{stats.high}</p>
+            </div>
+          </div>
 
-                <span className="inline-flex w-fit rounded-full bg-emerald-100 px-3 py-1.5 text-[13px] font-semibold text-emerald-700">
-                  High Confidence
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <label htmlFor="status-filter" className="text-sm font-medium text-slate-600">Status</label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(event) => handleStatusFilterChange(event.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-400"
+            >
+              <option value="Open">Open</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h4 className="text-lg font-semibold text-slate-900">Incidents</h4>
+              {loading ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading
                 </span>
-              </div>
+              ) : null}
+            </div>
 
-              <div className="mt-6 flex h-[86px] items-start">
-                <div className="flex h-[74px] w-[74px] items-center justify-center rounded-full border-[3px] border-slate-200 text-slate-700">
-                  <Bot className="h-9 w-9" />
+            <div className="space-y-2">
+              {incidents.map((incident) => {
+                const severity = severityTone(incident.severity);
+                return (
+                  <article
+                    key={incident.id}
+                    className={`rounded-lg border px-3 py-3 transition ${
+                      selectedIncidentId === incident.id
+                        ? 'border-indigo-200 bg-indigo-50/40'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold text-indigo-700">{incident.id}</span>
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${severity.chip}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${severity.dot}`} />
+                            {incident.severity}
+                          </span>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900">{incident.title}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{incident.service} • {formatDateTime(incident.timestamp)}</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedIncidentId(incident.id)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                        >
+                          <Clock className="h-3.5 w-3.5" /> Select
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAnalyze(incident)}
+                          disabled={analyzingId === incident.id}
+                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                          {analyzingId === incident.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          Analyze
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleResolve(incident)}
+                          disabled={resolvingId === incident.id || incident.status.toLowerCase().includes('resolve') || incident.status === 'RESOLVED'}
+                          className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {resolvingId === incident.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                          {incident.status.toLowerCase().includes('resolve') || incident.status === 'RESOLVED' ? 'Resolved' : 'Resolve'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* AI Analysis Accordion content */}
+                    {analysisById[incident.id] && (
+                      <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-4 text-sm animate-in fade-in slide-in-from-top-2">
+                        <div>
+                          <p className="font-semibold text-indigo-900 mb-1 flex items-center gap-1">
+                            <Sparkles className="h-3.5 w-3.5 text-indigo-500" /> AI Summary
+                          </p>
+                          <p className="text-slate-700 leading-relaxed bg-white/50 p-2.5 rounded-lg border border-indigo-50/50">
+                            {analysisById[incident.id].summary || 'No summary provided.'}
+                          </p>
+                        </div>
+                        
+                        <div>
+                          <p className="font-semibold text-indigo-900 mb-1">Root Cause</p>
+                          <p className="text-slate-700 leading-relaxed bg-white/50 p-2.5 rounded-lg border border-indigo-50/50">
+                            {analysisById[incident.id].root_cause || 'No root cause identified.'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="font-semibold text-indigo-900 mb-1">Recommendation</p>
+                          <p className="text-slate-700 leading-relaxed bg-white/50 p-2.5 rounded-lg border border-indigo-50/50">
+                            {analysisById[incident.id].recommendation || 'No recommendation provided.'}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-6 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-100/50">
+                          <div>
+                            <p className="font-semibold text-indigo-900 mb-0.5 text-xs uppercase tracking-wide">Confidence</p>
+                            <p className="text-slate-800 font-medium">
+                              {analysisById[incident.id].confidence || 'Unknown'}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-indigo-900 mb-0.5 text-xs uppercase tracking-wide">Estimated Effort</p>
+                            <p className="text-slate-800 font-medium">
+                              {analysisById[incident.id].estimated_effort || 'Unknown'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {Array.isArray(analysisById[incident.id].similar_incidents) && analysisById[incident.id].similar_incidents.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-indigo-900 mb-2">Similar Incidents</p>
+                            <div className="flex flex-col gap-2">
+                              {analysisById[incident.id].similar_incidents.map((sim, i) => (
+                                <div key={i} className="bg-white border border-indigo-100 p-3 rounded-lg shadow-sm">
+                                  <div className="font-semibold text-indigo-700 text-sm">
+                                    {sim.incident_id} <span className="text-slate-400 font-normal ml-1">|</span> {sim.short_description}
+                                  </div>
+                                  <div className="text-slate-600 mt-1.5 text-xs leading-relaxed">
+                                    <span className="font-medium text-slate-700">Resolution:</span> {sim.resolution}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+
+              {!loading && incidents.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
+                  No incidents returned by API for selected status.
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-2 flex flex-wrap gap-6 border-b border-slate-200 px-1 pb-2 text-[15px] font-medium text-slate-500">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`flex items-center gap-1.5 pb-1 transition ${
-                  activeTab === tab ? 'text-slate-700' : 'hover:text-slate-800'
-                }`}
-              >
-                {tab === 'AI RCA' ? <Sparkles className="h-3.5 w-3.5" /> : null}
-                <span>{tab}</span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-6 sm:py-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-[24px] font-semibold leading-tight text-slate-900 sm:text-[26px]">Probable Root Cause</h3>
-
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium text-slate-700">AI Generated</span>
-                <span className="rounded-full bg-emerald-100 px-3 py-1.5 text-[13px] font-semibold text-emerald-700">
-                  92% Confidence
-                </span>
-              </div>
-            </div>
-
-            <h4 className="mt-3 text-[27px] font-semibold leading-tight text-slate-900 sm:text-[31px]">
-              Redis server memory exhaustion (98% utilization)
-            </h4>
-
-            <p className="mt-3 max-w-[860px] text-[16px] leading-7 text-slate-600 sm:text-[17px]">
-              Redis connection is intermittently dropping causing cache misses and application errors. This is affecting the production
-              environment with multiple users reporting issues.
-            </p>
-
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-500">Evidence</p>
-                <p className="mt-1 text-[15px] text-slate-600">Log excerpts, service signals and correlated alerts continue below the fold.</p>
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+              ) : null}
             </div>
           </div>
         </section>
