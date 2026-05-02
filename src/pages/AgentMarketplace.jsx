@@ -34,7 +34,7 @@ const agentsData = [
     title: 'Bug Report Agent',
     accuracy: stableAccuracy('bug-report'),
     status: 'Live',
-    description: 'he Bug RCA (Root Cause Analysis) Agent is an AI-driven debugging assistant designed to drastically reduce the time engineers spend investigating software failures. By autonomously ingesting system logs, application telemetry, and recent source code changes, the agent acts as an automated Site Reliability Engineer (SRE)—triaging and diagnosing errors the moment they occur.',
+    description: 'The Bug RCA (Root Cause Analysis) Agent is an AI-driven debugging assistant designed to drastically reduce the time engineers spend investigating software failures. By autonomously ingesting system logs, application telemetry, and recent source code changes, the agent acts as an automated Site Reliability Engineer (SRE)—triaging and diagnosing errors the moment they occur.',
     category: 'Development'
   },
   {
@@ -111,12 +111,12 @@ const AgentMarketplace = () => {
 
   const filteredAgents = agentsData.filter(agent => {
     if (filters.industry && agent.category.toLowerCase() !== filters.industry.toLowerCase()) return false;
-    
-    
+
+
     // As we don't have function and personas in data, just do a basic text search in description for demonstration
     if (filters.function && !agent.description.toLowerCase().includes(filters.function.toLowerCase())) return false;
     if (filters.personas && !agent.description.toLowerCase().includes(filters.personas.toLowerCase())) return false;
-    
+
     return true;
   });
 
@@ -124,7 +124,7 @@ const AgentMarketplace = () => {
   const comingSoonAgents = filteredAgents.filter((agent) => agent.status === 'Coming Soon');
 
   const handleWatchDemo = (agent) => {
-    console.log('Watch demo for:', agent.title);
+    navigate(`/watch-demo/${agent.id}`);
   };
 
   const handleExploreAgent = (agent) => {
@@ -205,7 +205,7 @@ const AgentMarketplace = () => {
                 </select>
               </div>
 
-              
+
 
               <button
                 onClick={handleApply}
@@ -233,7 +233,7 @@ const AgentMarketplace = () => {
               <h2 className="text-xl font-bold text-[#0B3FBD] mb-5">Live Agents</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7 mb-10">
                 {liveAgents.map((agent) => (
-                  <div 
+                  <div
                     key={agent.id}
                     className="bg-white border border-gray-200 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col"
                   >
@@ -267,12 +267,7 @@ const AgentMarketplace = () => {
                       >
                         ▶ Watch Demo
                       </button>
-                      <button
-                        onClick={() => handleExploreAgent(agent)}
-                        className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
-                      >
-                        Explore Agent
-                      </button>
+
                       <button
                         onClick={() => handleExecuteAgent(agent.id)}
                         className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
@@ -288,10 +283,10 @@ const AgentMarketplace = () => {
 
           {comingSoonAgents.length > 0 && (
             <>
-             
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7">
                 {comingSoonAgents.map((agent) => (
-                  <div 
+                  <div
                     key={agent.id}
                     className="bg-white border border-gray-200 rounded-xl p-6 shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-col"
                   >
@@ -325,12 +320,7 @@ const AgentMarketplace = () => {
                       >
                         ▶ Watch Demo
                       </button>
-                      <button
-                        onClick={() => handleExploreAgent(agent)}
-                        className="px-2.5 py-1.5 bg-[#0B3FBD] text-white font-semibold rounded text-[11px] whitespace-nowrap shrink-0"
-                      >
-                        Explore Agent
-                      </button>
+
                       <button
                         disabled
                         className="px-2.5 py-1.5 bg-slate-300 text-slate-600 font-semibold rounded text-[11px] cursor-not-allowed whitespace-nowrap shrink-0"

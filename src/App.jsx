@@ -7,6 +7,7 @@ import BugReport from './pages/BugReport';
 import BugDetail from './pages/BugDetail';
 import AgentMarketplace from './pages/AgentMarketplace';
 import AgentDetail from './pages/AgentDetail';
+import WatchDemo from './pages/WatchDemo';
 
 function App() {
   return (
@@ -129,6 +130,7 @@ function App() {
           <Route path="/bug-report/:bugId" element={<BugDetail />} />
           <Route path="/agent-marketplace" element={<AgentMarketplace />} />
           <Route path="/agent-detail/:agentId" element={<AgentDetail />} />
+          <Route path="/watch-demo/:agentId" element={<WatchDemo />} />
         </Routes>
       </main>
 

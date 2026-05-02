@@ -108,6 +108,14 @@ export default function UserAccess() {
   const [actionInProgress, setActionInProgress] = useState({});
   const [analysisResults, setAnalysisResults] = useState({});
   const [backendSummary, setBackendSummary] = useState({});
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newRequestData, setNewRequestData] = useState({
+    user_id: '',
+    resource_name: 'Oncology Patient Dataset',
+    requested_action: 'read',
+    justification: ''
+  });
 
   useEffect(() => {
     // Create a fresh AbortController each mount — fixes React 18 StrictMode
@@ -428,6 +436,36 @@ export default function UserAccess() {
     }
   };
 
+  const handleCreateRequest = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      // Create request matching exactly the payload expected by the backend
+      const payload = {
+        user_id: "",
+        resource_name: newRequestData.resource_name,
+        requested_action: newRequestData.requested_action,
+        justification: newRequestData.justification
+      };
+
+      const response = await fetch(`${USER_ACCESS_API_BASE}/user-access/create-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error('Failed to create request');
+
+      setIsModalOpen(false);
+      setNewRequestData({ user_id: '', resource_name: 'Oncology Patient Dataset', requested_action: 'read', justification: '' });
+      refreshData();
+    } catch (error) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="w-full bg-white py-4 sm:py-6">
       <div className="w-full px-4 sm:px-6 lg:px-8">
@@ -446,11 +484,10 @@ export default function UserAccess() {
                     key={item.label}
                     type="button"
                     onClick={() => item.path && navigate(item.path)}
-                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[15px] transition ${
-                      item.active
+                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-[15px] transition ${item.active
                         ? 'border border-indigo-100 bg-indigo-50 font-semibold text-indigo-700 shadow-sm'
                         : 'border border-transparent text-slate-600 hover:border-slate-200 hover:bg-white hover:text-slate-800'
-                    }`}
+                      }`}
                   >
                     <span className={`flex h-7 w-7 items-center justify-center rounded ${item.active ? 'bg-white text-indigo-600' : 'text-slate-500'}`}>
                       <Icon className="h-4 w-4 shrink-0" />
@@ -464,7 +501,7 @@ export default function UserAccess() {
             <div className="mt-6 border-t border-slate-200 pt-4">
               <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Support</p>
               <div className="space-y-2">
-                
+
 
                 <button
                   type="button"
@@ -483,349 +520,421 @@ export default function UserAccess() {
                 <p className="mt-1 text-sm text-slate-500">Manage and approve access requests</p>
                 {apiStatus && <div className="mt-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">{apiStatus}</div>}
               </div>
-              <button
-                type="button"
-                onClick={refreshData}
-                disabled={loading}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
-              >
-                <Loader2 className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+              <div className="flex items-center gap-3">
+
+                <button
+                  type="button"
+                  onClick={refreshData}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  <Loader2 className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
             </div>
             <div className="space-y-6">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="text-sm font-medium text-slate-600">Pending Requests</div>
-              <div className="mt-2 flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-900">{stats.pending}</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Pending Requests</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{stats.pending}</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Approved</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{stats.approved}</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Rejected</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{stats.rejected}</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Total Requests</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{stats.totalRequests}</div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Unique Resources</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{stats.uniqueResources}</div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="text-sm font-medium text-slate-600">Approved</div>
-              <div className="mt-2 flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-900">{stats.approved}</div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="text-sm font-medium text-slate-600">Rejected</div>
-              <div className="mt-2 flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-900">{stats.rejected}</div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="text-sm font-medium text-slate-600">Total Requests</div>
-              <div className="mt-2 flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-900">{stats.totalRequests}</div>
-              </div>
-            </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
-              <div className="text-sm font-medium text-slate-600">Unique Resources</div>
-              <div className="mt-2 flex items-end gap-2">
-                <div className="text-3xl font-bold text-slate-900">{stats.uniqueResources}</div>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
-            <div className="space-y-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-                <input type="text" placeholder="Search by Request ID, User, or Resource..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+                    <input type="text" placeholder="Search by Request ID, User, or Resource..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="all">Status: All</option>
+                      <option value="pending">Status: Pending</option>
+                      <option value="approved">Status: Approved</option>
+                      <option value="rejected">Status: Rejected</option>
+                    </select>
+                    <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="all">Priority: All</option>
+                      <option value="high">Priority: High</option>
+                      <option value="medium">Priority: Medium</option>
+                      <option value="low">Priority: Low</option>
+                    </select>
+                    <select value={accessTypeFilter} onChange={(e) => setAccessTypeFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="all">Access Type: All</option>
+                      {accessTypes.map((type) => <option key={type} value={type}>Access Type: {type}</option>)}
+                    </select>
+                    <select value={resourceFilter} onChange={(e) => setResourceFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="all">Resource: All</option>
+                      {uniqueResources.map((resource) => <option key={resource} value={resource}>{resource}</option>)}
+                    </select>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="created_at">Sort by Date</option>
+                      <option value="user_name">Sort by User</option>
+                      <option value="priority">Sort by Priority</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="all">Status: All</option>
-                  <option value="pending">Status: Pending</option>
-                  <option value="approved">Status: Approved</option>
-                  <option value="rejected">Status: Rejected</option>
-                </select>
-                <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="all">Priority: All</option>
-                  <option value="high">Priority: High</option>
-                  <option value="medium">Priority: Medium</option>
-                  <option value="low">Priority: Low</option>
-                </select>
-                <select value={accessTypeFilter} onChange={(e) => setAccessTypeFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="all">Access Type: All</option>
-                  {accessTypes.map((type) => <option key={type} value={type}>Access Type: {type}</option>)}
-                </select>
-                <select value={resourceFilter} onChange={(e) => setResourceFilter(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="all">Resource: All</option>
-                  {uniqueResources.map((resource) => <option key={resource} value={resource}>{resource}</option>)}
-                </select>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <option value="created_at">Sort by Date</option>
-                  <option value="user_name">Sort by User</option>
-                  <option value="priority">Sort by Priority</option>
-                </select>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Request ID</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">User</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Resource</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Access Type</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Requested At</th>
-                    <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {loading ? (
-                    <tr>
-                      <td colSpan="7" className="px-6 py-8 text-center text-slate-500">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent" />
-                          Loading requests from backend...
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filteredRequests.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="px-6 py-8 text-center text-slate-500">
-                        No access requests found matching your filters.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRequests.map((request) => (
-                      <React.Fragment key={request.request_id}>
-                        <tr className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4 text-sm font-semibold text-indigo-600">{request.request_id}</td>
-                          <td className="px-6 py-4 text-sm text-slate-900">{request.user_name}</td>
-                          <td className="px-6 py-4 text-sm text-slate-700">{request.resource_name}</td>
-                          <td className="px-6 py-4 text-sm text-slate-700 capitalize">{request.requested_action}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600">
-                            <div className="text-xs text-slate-500">{formatTime(request.created_at)}</div>
-                            <div className="text-xs text-slate-400">{formatDate(request.created_at)}</div>
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${toneByStatus(request.status)}`}>
-                              {request.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="inline-flex items-center gap-1">
-                              {request.status.toLowerCase() === 'pending' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    title="Approve"
-                                    onClick={() => handleDecision(request.request_id, 'approved')}
-                                    disabled={!!actionInProgress[request.request_id]}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {actionInProgress[request.request_id] === 'approved' ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <CheckCircle className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    title="Reject"
-                                    onClick={() => handleDecision(request.request_id, 'rejected')}
-                                    disabled={!!actionInProgress[request.request_id]}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {actionInProgress[request.request_id] === 'rejected' ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <XCircle className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                type="button"
-                                title="Analyze"
-                                onClick={() => handleAnalyze(request)}
-                                disabled={actionInProgress[request.request_id] === 'analyzing'}
-                                className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {actionInProgress[request.request_id] === 'analyzing' ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Bot className="h-3.5 w-3.5" />
-                                )}
-                              </button>
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Request ID</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Resource</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Access Type</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Requested At</th>
+                        <th className="px-6 py-4 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-4 text-center text-xs font-semibold text-slate-600 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {loading ? (
+                        <tr>
+                          <td colSpan="7" className="px-6 py-8 text-center text-slate-500">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent" />
+                              Loading requests from backend...
                             </div>
                           </td>
                         </tr>
-                        {expandedRequest === request.request_id && (actionInProgress[request.request_id] === 'analyzing' || !!analysisResults[request.request_id]) && (
-                          <tr className="bg-slate-50 border-t border-b border-slate-200">
-                            <td colSpan="7" className="px-6 py-4">
-                              {/* Analysis results panel */}
-                              {actionInProgress[request.request_id] === 'analyzing' && !analysisResults[request.request_id] && (
-                                <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
-                                  <p className="flex items-center gap-2 text-sm font-medium text-indigo-700">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Running AI analysis...
-                                  </p>
-                                </div>
-                              )}
-
-                              {analysisResults[request.request_id] && (
-                                <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white p-5 space-y-4">
-                                  <div className="flex items-center justify-between">
-                                    <h4 className="flex items-center gap-2 text-sm font-bold text-indigo-900">
-                                      <Sparkles className="h-4 w-4 text-indigo-600" /> AI Analysis Result
-                                    </h4>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setAnalysisResults((prev) => { const u = { ...prev }; delete u[request.request_id]; return u; });
-                                        setExpandedRequest(null);
-                                      }}
-                                      className="text-slate-400 hover:text-slate-600"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </button>
-                                  </div>
-
-                                  {/* Summary */}
-                                  {analysisResults[request.request_id].summary && (
-                                    <div className="rounded-lg bg-white border border-indigo-100 p-3">
-                                      <p className="text-xs font-semibold text-slate-500 mb-1">Summary</p>
-                                      <p className="text-sm text-slate-700 leading-relaxed">{analysisResults[request.request_id].summary}</p>
-                                    </div>
-                                  )}
-
-                                  <div className="grid gap-3 sm:grid-cols-2">
-                                    {/* Current Roles */}
-                                    {analysisResults[request.request_id].current_roles?.length > 0 && (
-                                      <div className="rounded-lg bg-white border border-slate-100 p-3">
-                                        <p className="text-xs font-semibold text-slate-500 mb-2">Current Roles</p>
-                                        <div className="space-y-1">
-                                          {analysisResults[request.request_id].current_roles.map((role, i) => (
-                                            <div key={i} className="flex items-center justify-between text-xs">
-                                              <span className="font-medium text-slate-700">{role.role}</span>
-                                              <span className="text-slate-400">{role.scope}</span>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Candidate Roles */}
-                                    {analysisResults[request.request_id].candidate_roles?.length > 0 && (
-                                      <div className="rounded-lg bg-white border border-slate-100 p-3">
-                                        <p className="text-xs font-semibold text-slate-500 mb-2">Candidate Roles</p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                          {analysisResults[request.request_id].candidate_roles.map((role, i) => (
-                                            <span key={i} className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700">{role}</span>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Impact */}
-                                  {analysisResults[request.request_id].impact && (
-                                    <div className={`rounded-lg border p-3 ${
-                                      analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'high'
-                                        ? 'bg-rose-50 border-rose-200'
-                                        : analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'medium'
-                                        ? 'bg-amber-50 border-amber-200'
-                                        : 'bg-emerald-50 border-emerald-200'
-                                    }`}>
-                                      <p className="text-xs font-semibold text-slate-500 mb-1">Impact Assessment</p>
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                                          analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'high'
-                                            ? 'bg-rose-100 text-rose-700'
-                                            : analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'medium'
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-emerald-100 text-emerald-700'
-                                        }`}>
-                                          {analysisResults[request.request_id].impact.risk_level} Risk
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-slate-600">{analysisResults[request.request_id].impact.description}</p>
-                                    </div>
-                                  )}
-
-                                  {/* Recommendation */}
-                                  {analysisResults[request.request_id].recommendation && (
-                                    <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3">
-                                      <p className="text-xs font-semibold text-slate-500 mb-1">AI Recommendation</p>
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                                          analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve'
-                                            ? 'bg-emerald-100 text-emerald-700'
-                                            : 'bg-rose-100 text-rose-700'
-                                        }`}>
-                                          {analysisResults[request.request_id].recommendation.decision}
-                                        </span>
-                                        <span className="text-xs text-slate-500">
-                                          Confidence: {analysisResults[request.request_id].recommendation.confidence}
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-slate-600">{analysisResults[request.request_id].recommendation.reason}</p>
-                                    </div>
-                                  )}
-
-                                  {/* History */}
-                                  {analysisResults[request.request_id].history && (
-                                    <div className="rounded-lg bg-white border border-slate-100 p-3">
-                                      <p className="text-xs font-semibold text-slate-500 mb-2">Request History</p>
-                                      <div className="grid grid-cols-2 gap-2 text-xs">
-                                        <div>
-                                          <span className="text-slate-400">Previously Approved:</span>{' '}
-                                          <span className="font-medium text-emerald-600">{analysisResults[request.request_id].history.approved_request_ids?.length || 0}</span>
-                                        </div>
-                                        <div>
-                                          <span className="text-slate-400">Previously Rejected:</span>{' '}
-                                          <span className="font-medium text-rose-600">{analysisResults[request.request_id].history.rejected_request_ids?.length || 0}</span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Quick action based on recommendation */}
-                                  {request.status.toLowerCase() === 'pending' && analysisResults[request.request_id].recommendation && (
-                                    <div className="flex items-center gap-3 pt-2 border-t border-indigo-100">
-                                      <span className="text-xs text-slate-500">AI suggests:</span>
+                      ) : filteredRequests.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" className="px-6 py-8 text-center text-slate-500">
+                            No access requests found matching your filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRequests.map((request) => (
+                          <React.Fragment key={request.request_id}>
+                            <tr className="hover:bg-slate-50 transition-colors">
+                              <td className="px-6 py-4 text-sm font-semibold text-indigo-600">{request.request_id}</td>
+                              <td className="px-6 py-4 text-sm text-slate-900">{request.user_name}</td>
+                              <td className="px-6 py-4 text-sm text-slate-700">{request.resource_name}</td>
+                              <td className="px-6 py-4 text-sm text-slate-700 capitalize">{request.requested_action}</td>
+                              <td className="px-6 py-4 text-sm text-slate-600">
+                                <div className="text-xs text-slate-500">{formatTime(request.created_at)}</div>
+                                <div className="text-xs text-slate-400">{formatDate(request.created_at)}</div>
+                              </td>
+                              <td className="px-6 py-4 text-sm">
+                                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${toneByStatus(request.status)}`}>
+                                  {request.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-center">
+                                <div className="inline-flex items-center gap-1">
+                                  {request.status.toLowerCase() === 'pending' && (
+                                    <>
                                       <button
-                                        onClick={() => handleDecision(
-                                          request.request_id,
-                                          analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve' ? 'approved' : 'rejected'
-                                        )}
+                                        type="button"
+                                        title="Approve"
+                                        onClick={() => handleDecision(request.request_id, 'approved')}
                                         disabled={!!actionInProgress[request.request_id]}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors disabled:opacity-50 ${
-                                          analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve'
-                                            ? 'bg-emerald-500 hover:bg-emerald-600'
-                                            : 'bg-rose-500 hover:bg-rose-600'
-                                        }`}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                                       >
-                                        <Sparkles className="w-3 h-3" />
-                                        {analysisResults[request.request_id].recommendation.decision} (AI Recommended)
+                                        {actionInProgress[request.request_id] === 'approved' ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <CheckCircle className="h-3.5 w-3.5" />
+                                        )}
                                       </button>
+                                      <button
+                                        type="button"
+                                        title="Reject"
+                                        onClick={() => handleDecision(request.request_id, 'rejected')}
+                                        disabled={!!actionInProgress[request.request_id]}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                      >
+                                        {actionInProgress[request.request_id] === 'rejected' ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <XCircle className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    title="Analyze"
+                                    onClick={() => handleAnalyze(request)}
+                                    disabled={actionInProgress[request.request_id] === 'analyzing'}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {actionInProgress[request.request_id] === 'analyzing' ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Bot className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            {expandedRequest === request.request_id && (actionInProgress[request.request_id] === 'analyzing' || !!analysisResults[request.request_id]) && (
+                              <tr className="bg-slate-50 border-t border-b border-slate-200">
+                                <td colSpan="7" className="px-6 py-4">
+                                  {/* Analysis results panel */}
+                                  {actionInProgress[request.request_id] === 'analyzing' && !analysisResults[request.request_id] && (
+                                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+                                      <p className="flex items-center gap-2 text-sm font-medium text-indigo-700">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Running AI analysis...
+                                      </p>
                                     </div>
                                   )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+
+                                  {analysisResults[request.request_id] && (
+                                    <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white p-5 space-y-4">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="flex items-center gap-2 text-sm font-bold text-indigo-900">
+                                          <Sparkles className="h-4 w-4 text-indigo-600" /> AI Analysis Result
+                                        </h4>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAnalysisResults((prev) => { const u = { ...prev }; delete u[request.request_id]; return u; });
+                                            setExpandedRequest(null);
+                                          }}
+                                          className="text-slate-400 hover:text-slate-600"
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </button>
+                                      </div>
+
+                                      {/* Summary */}
+                                      {analysisResults[request.request_id].summary && (
+                                        <div className="rounded-lg bg-white border border-indigo-100 p-3">
+                                          <p className="text-xs font-semibold text-slate-500 mb-1">Summary</p>
+                                          <p className="text-sm text-slate-700 leading-relaxed">{analysisResults[request.request_id].summary}</p>
+                                        </div>
+                                      )}
+
+                                      <div className="grid gap-3 sm:grid-cols-2">
+                                        {/* Current Roles */}
+                                        {analysisResults[request.request_id].current_roles?.length > 0 && (
+                                          <div className="rounded-lg bg-white border border-slate-100 p-3">
+                                            <p className="text-xs font-semibold text-slate-500 mb-2">Current Roles</p>
+                                            <div className="space-y-1">
+                                              {analysisResults[request.request_id].current_roles.map((role, i) => (
+                                                <div key={i} className="flex items-center justify-between text-xs">
+                                                  <span className="font-medium text-slate-700">{role.role}</span>
+                                                  <span className="text-slate-400">{role.scope}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Candidate Roles */}
+                                        {analysisResults[request.request_id].candidate_roles?.length > 0 && (
+                                          <div className="rounded-lg bg-white border border-slate-100 p-3">
+                                            <p className="text-xs font-semibold text-slate-500 mb-2">Candidate Roles</p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {analysisResults[request.request_id].candidate_roles.map((role, i) => (
+                                                <span key={i} className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-medium text-indigo-700">{role}</span>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {/* Impact */}
+                                      {analysisResults[request.request_id].impact && (
+                                        <div className={`rounded-lg border p-3 ${analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'high'
+                                            ? 'bg-rose-50 border-rose-200'
+                                            : analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'medium'
+                                              ? 'bg-amber-50 border-amber-200'
+                                              : 'bg-emerald-50 border-emerald-200'
+                                          }`}>
+                                          <p className="text-xs font-semibold text-slate-500 mb-1">Impact Assessment</p>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'high'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : analysisResults[request.request_id].impact.risk_level?.toLowerCase() === 'medium'
+                                                  ? 'bg-amber-100 text-amber-700'
+                                                  : 'bg-emerald-100 text-emerald-700'
+                                              }`}>
+                                              {analysisResults[request.request_id].impact.risk_level} Risk
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-slate-600">{analysisResults[request.request_id].impact.description}</p>
+                                        </div>
+                                      )}
+
+                                      {/* Recommendation */}
+                                      {analysisResults[request.request_id].recommendation && (
+                                        <div className="rounded-lg bg-indigo-50 border border-indigo-200 p-3">
+                                          <p className="text-xs font-semibold text-slate-500 mb-1">AI Recommendation</p>
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-rose-100 text-rose-700'
+                                              }`}>
+                                              {analysisResults[request.request_id].recommendation.decision}
+                                            </span>
+                                            <span className="text-xs text-slate-500">
+                                              Confidence: {analysisResults[request.request_id].recommendation.confidence}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-slate-600">{analysisResults[request.request_id].recommendation.reason}</p>
+                                        </div>
+                                      )}
+
+                                      {/* History */}
+                                      {analysisResults[request.request_id].history && (
+                                        <div className="rounded-lg bg-white border border-slate-100 p-3">
+                                          <p className="text-xs font-semibold text-slate-500 mb-2">Request History</p>
+                                          <div className="grid grid-cols-2 gap-2 text-xs">
+                                            <div>
+                                              <span className="text-slate-400">Previously Approved:</span>{' '}
+                                              <span className="font-medium text-emerald-600">{analysisResults[request.request_id].history.approved_request_ids?.length || 0}</span>
+                                            </div>
+                                            <div>
+                                              <span className="text-slate-400">Previously Rejected:</span>{' '}
+                                              <span className="font-medium text-rose-600">{analysisResults[request.request_id].history.rejected_request_ids?.length || 0}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Quick action based on recommendation */}
+                                      {request.status.toLowerCase() === 'pending' && analysisResults[request.request_id].recommendation && (
+                                        <div className="flex items-center gap-3 pt-2 border-t border-indigo-100">
+                                          <span className="text-xs text-slate-500">AI suggests:</span>
+                                          <button
+                                            onClick={() => handleDecision(
+                                              request.request_id,
+                                              analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve' ? 'approved' : 'rejected'
+                                            )}
+                                            disabled={!!actionInProgress[request.request_id]}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors disabled:opacity-50 ${analysisResults[request.request_id].recommendation.decision?.toLowerCase() === 'approve'
+                                                ? 'bg-emerald-500 hover:bg-emerald-600'
+                                                : 'bg-rose-500 hover:bg-rose-600'
+                                              }`}
+                                          >
+                                            <Sparkles className="w-3 h-3" />
+                                            {analysisResults[request.request_id].recommendation.decision} (AI Recommended)
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
             </div>
           </section>
         </div>
       </div>
+
+      {/* Create Request Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Create Access Request</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateRequest} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">User ID</label>
+                <input
+                  type="text"
+                  placeholder="e.g. U001 (Leave empty for Sachin fallback)"
+                  value={newRequestData.user_id}
+                  onChange={e => setNewRequestData({ ...newRequestData, user_id: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Resource Name</label>
+                <select
+                  value={newRequestData.resource_name}
+                  onChange={e => setNewRequestData({ ...newRequestData, resource_name: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="Oncology Patient Dataset">Oncology Patient Dataset</option>
+                  <option value="Diabetes Analysis Dataset">Diabetes Analysis Dataset</option>
+                  <option value="Cardiology Results Dataset">Cardiology Results Dataset</option>
+                  <option value="Neurology Biomarker Dataset">Neurology Biomarker Dataset</option>
+                  <option value="Oncology Pipeline">Oncology Pipeline</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Action</label>
+                <select
+                  value={newRequestData.requested_action}
+                  onChange={e => setNewRequestData({ ...newRequestData, requested_action: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="read">Read</option>
+                  <option value="write">Write</option>
+                  <option value="approve">Approve</option>
+                  <option value="export">Export</option>
+                  <option value="run">Run</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Justification (Optional)</label>
+                <textarea
+                  rows="3"
+                  value={newRequestData.justification}
+                  onChange={e => setNewRequestData({ ...newRequestData, justification: e.target.value })}
+                  placeholder="Why do you need access?"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                ></textarea>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 border border-slate-200">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isSubmitting} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+                  {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Create Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

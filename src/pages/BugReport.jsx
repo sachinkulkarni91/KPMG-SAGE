@@ -124,19 +124,30 @@ const normalizeBugLog = (item, index) => {
   const severity = String(firstValue(item.severity, item.priority, deriveSeverity(errorMessage)));
   const status = String(firstValue(item.status, item.state, 'New'));
 
+  let extractedModule = serviceName;
+  let extractedTitle = errorMessage;
+
+  const bracketMatch = extractedTitle.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (bracketMatch) {
+    extractedModule = bracketMatch[1].trim();
+    extractedTitle = bracketMatch[2].trim();
+  } else if (extractedModule.toLowerCase() === 'bug') {
+    extractedModule = 'Unknown Module';
+  }
+
   return {
     id: firstValue(reqId ? `BUG-${String(reqId).slice(-4).toUpperCase()}` : null, `BUG-${3000 + index}`),
-    module: serviceName,
+    module: extractedModule,
     severity,
-    title: errorMessage,
+    title: extractedTitle,
     summary: firstValue(item.summary, item.details, `Environment: ${firstValue(item.environment, 'production')}`),
     dateTime: formatDate(timestamp),
     timestampRaw: timestamp,
     status,
     rawLog: {
       timestamp,
-      service_name: serviceName,
-      error_message: errorMessage,
+      service_name: extractedModule,
+      error_message: extractedTitle,
       stack_trace: item.stack_trace ?? null,
       environment: firstValue(item.environment, 'production'),
       user_id: firstValue(item.user_id, null),
@@ -272,7 +283,7 @@ const BugReport = () => {
   const [serviceInfo, setServiceInfo] = useState(null);
   const [serviceHealth, setServiceHealth] = useState(null);
 
-  const [showAIAssistant, setShowAIAssistant] = useState(true);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [assistantLastDepth, setAssistantLastDepth] = useState('detailed');
   const [assistantLatestResult, setAssistantLatestResult] = useState(null);
@@ -901,7 +912,7 @@ const BugReport = () => {
                       <div className="mb-1.5 flex flex-wrap items-center gap-2">
                         <span className="text-xl font-bold text-[#1e293b]">{bug.id}</span>
                         <span className="text-xs text-slate-500">{bug.module}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${severityTone.chip}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${severityTone.chip}`}>
                           {bug.severity}
                         </span>
                       </div>
@@ -1080,16 +1091,7 @@ const BugReport = () => {
         </aside>
       ) : null}
 
-      {!showAIAssistant ? (
-        <button
-          type="button"
-          onClick={() => setShowAIAssistant((value) => !value)}
-          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-2xl shadow-indigo-500/30 transition hover:bg-indigo-700"
-          aria-label="Toggle AI Assistant"
-        >
-          <Sparkles className="h-6 w-6" />
-        </button>
-      ) : null}
+
     </div>
   );
 };

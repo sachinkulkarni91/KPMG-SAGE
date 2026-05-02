@@ -632,12 +632,20 @@ const AgentDetail = () => {
         <div className="mt-16 bg-gradient-to-r from-[#0B3FBD] to-[#0A45C4] rounded-lg p-8 text-white text-center">
           <h3 className="text-2xl font-bold mb-4">Ready to Get Started?</h3>
           <p className="mb-6 text-blue-100">Explore this agent in the marketplace or execute it now.</p>
-          <button
-            onClick={() => navigate('/agent-marketplace')}
-            className="inline-block px-8 py-3 bg-white text-[#0B3FBD] font-semibold rounded-lg hover:bg-blue-50 transition-colors"
-          >
-            Back to Marketplace
-          </button>
+          <div className="flex justify-center gap-4 flex-wrap">
+            <button
+              onClick={() => navigate(`/watch-demo/${agentId}`)}
+              className="inline-block px-8 py-3 bg-white text-[#0B3FBD] font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Watch Demo
+            </button>
+            <button
+              onClick={() => navigate('/agent-marketplace')}
+              className="inline-block px-8 py-3 bg-transparent border-2 border-white text-white font-semibold rounded-lg hover:bg-[#03307f] transition-colors"
+            >
+              Back to Marketplace
+            </button>
+          </div>
         </div>
       </div>
     </div>

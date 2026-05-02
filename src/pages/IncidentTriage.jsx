@@ -7,6 +7,9 @@ import {
   Loader2,
   RefreshCw,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Search,
   Home,
   LifeBuoy,
   Settings,
@@ -93,38 +96,64 @@ const IncidentTriage = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('AI RCA');
   const [rootInfo, setRootInfo] = useState(null);
-  const [incidents, setIncidents] = useState([]);
+  const [allIncidents, setAllIncidents] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedIncidentId, setSelectedIncidentId] = useState('');
   const [analysisById, setAnalysisById] = useState({});
-  const [statusFilter, setStatusFilter] = useState('Open');
+  const [expandedAnalysis, setExpandedAnalysis] = useState({});
+  const [statusFilter, setStatusFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [analyzingId, setAnalyzingId] = useState('');
   const [resolvingId, setResolvingId] = useState('');
+  const [resolveModalOpen, setResolveModalOpen] = useState(false);
+  const [incidentToResolve, setIncidentToResolve] = useState(null);
+  const [resolutionNote, setResolutionNote] = useState('');
   const [apiMessage, setApiMessage] = useState('');
 
   const selectedIncident = useMemo(
-    () => incidents.find((incident) => incident.id === selectedIncidentId) || null,
-    [incidents, selectedIncidentId]
+    () => allIncidents.find((incident) => incident.id === selectedIncidentId) || null,
+    [allIncidents, selectedIncidentId]
   );
 
   const selectedAnalysis = selectedIncidentId ? analysisById[selectedIncidentId] : null;
 
+  const displayedIncidents = useMemo(() => {
+    let filtered = allIncidents;
+    if (statusFilter !== 'All') {
+      filtered = filtered.filter((i) => {
+        const lowerStatus = i.status.toLowerCase();
+        if (statusFilter === 'Resolved') return lowerStatus.includes('resolve') || lowerStatus.includes('close') || lowerStatus === 'resolved';
+        if (statusFilter === 'In Progress') return lowerStatus.includes('progress');
+        if (statusFilter === 'Open') return lowerStatus === 'open';
+        return true;
+      });
+    }
+    if (searchQuery) {
+      const lowerQ = searchQuery.toLowerCase();
+      filtered = filtered.filter((i) =>
+        i.id.toLowerCase().includes(lowerQ) ||
+        i.service.toLowerCase().includes(lowerQ)
+      );
+    }
+    return filtered;
+  }, [allIncidents, statusFilter, searchQuery]);
+
   const stats = useMemo(() => {
-    const openCount = incidents.filter((incident) => {
+    const openCount = allIncidents.filter((incident) => {
       const key = String(incident.status).toLowerCase();
       return key.includes('open') || key.includes('progress');
     }).length;
-    const resolvedCount = incidents.length - openCount;
-    const criticalCount = incidents.filter((incident) => String(incident.severity).toLowerCase().includes('critical')).length;
-    const highCount = incidents.filter((incident) => String(incident.severity).toLowerCase().includes('high')).length;
+    const resolvedCount = allIncidents.length - openCount;
+    const criticalCount = allIncidents.filter((incident) => String(incident.severity).toLowerCase().includes('critical')).length;
+    const highCount = allIncidents.filter((incident) => String(incident.severity).toLowerCase().includes('high')).length;
     return {
-      total: incidents.length,
+      total: allIncidents.length,
       open: openCount,
       resolved: resolvedCount,
       critical: criticalCount,
       high: highCount,
     };
-  }, [incidents]);
+  }, [allIncidents]);
 
   const fetchRootInfo = async (signal) => {
     const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/`, {
@@ -137,25 +166,37 @@ const IncidentTriage = () => {
     setRootInfo(payload);
   };
 
-  const fetchIncidents = async (status = 'Open', signal) => {
-    const query = `?status=${encodeURIComponent(status || 'Open')}`;
-    const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/get-incidents${query}`, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal,
+  const fetchIncidents = async (signal) => {
+    const statuses = ['Open', 'In Progress', 'Resolved'];
+    const promises = statuses.map((status) =>
+      fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/get-incidents?status=${encodeURIComponent(status)}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal,
+      })
+        .then((res) => {
+          if (!res.ok) return [];
+          return res.json().then((payload) => extractIncidentsArray(payload));
+        })
+        .catch(() => [])
+    );
+    const results = await Promise.all(promises);
+    const all = results.flat();
+
+    const uniqueMap = new Map();
+    all.forEach((item) => {
+      const id = firstValue(item.number, item.incident_id, item.id, item.request_id);
+      if (!uniqueMap.has(id)) uniqueMap.set(id, item);
     });
-    if (!response.ok) throw new Error(`Get incidents API failed: ${response.status}`);
-    const payload = await response.json();
-    const normalized = extractIncidentsArray(payload).map((item, index) => normalizeIncident(item, index));
-    setIncidents(normalized);
-    if (normalized.length > 0) {
-      setSelectedIncidentId((prev) => (prev && normalized.some((incident) => incident.id === prev) ? prev : normalized[0].id));
-    } else {
-      setSelectedIncidentId('');
-    }
+
+    const normalized = Array.from(uniqueMap.values())
+      .map((item, index) => normalizeIncident(item, index))
+      .sort((a, b) => b.incidentNumber - a.incidentNumber);
+
+    setAllIncidents(normalized);
   };
 
-  const refreshAll = async (status = statusFilter) => {
+  const refreshAll = async () => {
     if (!INCIDENT_TRIAGE_API_BASE) {
       setApiMessage('Missing VITE_INCIDENT_TRIAGE_API_URL in environment configuration.');
       setLoading(false);
@@ -168,7 +209,7 @@ const IncidentTriage = () => {
       setApiMessage('');
       await Promise.all([
         fetchRootInfo(controller.signal),
-        fetchIncidents(status, controller.signal),
+        fetchIncidents(controller.signal),
       ]);
     } catch (error) {
       if (error.name !== 'AbortError') {
@@ -180,50 +221,29 @@ const IncidentTriage = () => {
   };
 
   useEffect(() => {
-    refreshAll('Open');
+    refreshAll();
   }, []);
-
-  const handleStatusFilterChange = async (nextStatus) => {
-    setStatusFilter(nextStatus);
-    if (!INCIDENT_TRIAGE_API_BASE) {
-      setApiMessage('Missing VITE_INCIDENT_TRIAGE_API_URL in environment configuration.');
-      return;
-    }
-
-    const controller = new AbortController();
-    try {
-      setLoading(true);
-      setApiMessage('');
-      await fetchIncidents(nextStatus, controller.signal);
-    } catch (error) {
-      if (error.name !== 'AbortError') {
-        setApiMessage(error.message || 'Failed to load incidents for selected status.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAnalyze = async (incident) => {
     if (!incident || !INCIDENT_TRIAGE_API_BASE) return;
     setAnalyzingId(incident.id);
     setSelectedIncidentId(incident.id);
     setApiMessage('');
-    console.log(incident,"incident")
+    console.log(incident, "incident")
     const incidentId = incident.id;
     try {
       const response = await fetch(
         `${INCIDENT_TRIAGE_API_BASE}/incident-triage/analyze?incident_id=${encodeURIComponent(incidentId)}`,
         {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          req_id: incidentId,
-          status: incident.status,
-        }),
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            req_id: incidentId,
+            status: incident.status,
+          }),
         }
       );
 
@@ -240,6 +260,7 @@ const IncidentTriage = () => {
 
       const payload = await response.json();
       setAnalysisById((prev) => ({ ...prev, [incident.id]: payload }));
+      setExpandedAnalysis((prev) => ({ ...prev, [incident.id]: true }));
       setActiveTab('AI RCA');
     } catch (error) {
       setApiMessage(error.message || 'Failed to analyze incident.');
@@ -248,11 +269,25 @@ const IncidentTriage = () => {
     }
   };
 
-  const handleResolve = async (incident) => {
-    if (!incident || !INCIDENT_TRIAGE_API_BASE) return;
+  const openResolveModal = (incident) => {
+    setIncidentToResolve(incident);
+    setResolutionNote('');
+    setResolveModalOpen(true);
+  };
+
+  const closeResolveModal = () => {
+    setResolveModalOpen(false);
+    setIncidentToResolve(null);
+    setResolutionNote('');
+  };
+
+  const submitResolution = async () => {
+    if (!incidentToResolve || !INCIDENT_TRIAGE_API_BASE) return;
+    const incident = incidentToResolve;
     setResolvingId(incident.id);
     setApiMessage('');
     const incidentId = incident.id;
+    const note = resolutionNote.trim() || 'Resolved via Incident Triage UI';
 
     try {
       const response = await fetch(`${INCIDENT_TRIAGE_API_BASE}/incident-triage/resolve`, {
@@ -263,7 +298,7 @@ const IncidentTriage = () => {
         },
         body: JSON.stringify({
           incident_id: incidentId,
-          resolution: 'Resolved via Incident Triage UI',
+          resolution: note,
           status: 'RESOLVED',
         }),
       });
@@ -279,11 +314,13 @@ const IncidentTriage = () => {
         throw new Error(detail);
       }
 
-      setIncidents((prev) =>
+      setAllIncidents((prev) =>
         prev.map((item) => (item.id === incident.id ? { ...item, status: 'Resolved' } : item))
       );
+      closeResolveModal();
     } catch (error) {
       setApiMessage(error.message || 'Failed to resolve incident.');
+      closeResolveModal();
     } finally {
       setResolvingId('');
     }
@@ -352,11 +389,10 @@ const IncidentTriage = () => {
                   key={item.label}
                   type="button"
                   onClick={() => item.path && navigate(item.path)}
-                  className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left text-[15px] transition ${
-                    item.active
-                      ? 'border-indigo-100 bg-[#eef2ff] font-medium text-[#3b4fd1] shadow-sm'
-                      : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-800'
-                  }`}
+                  className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left text-[15px] transition ${item.active
+                    ? 'border-indigo-100 bg-[#eef2ff] font-medium text-[#3b4fd1] shadow-sm'
+                    : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+                    }`}
                 >
                   <span className={`flex h-6 w-6 items-center justify-center ${item.active ? 'text-[#5b4cf2]' : 'text-slate-500'}`}>
                     <Icon className="h-[17px] w-[17px]" />
@@ -407,41 +443,37 @@ const IncidentTriage = () => {
             </div>
           ) : null}
 
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">Total</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{stats.total}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">Open</p>
-              <p className="mt-1 text-2xl font-bold text-indigo-700">{stats.open}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">Resolved</p>
-              <p className="mt-1 text-2xl font-bold text-emerald-700">{stats.resolved}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">Critical</p>
-              <p className="mt-1 text-2xl font-bold text-rose-700">{stats.critical}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs text-slate-500">High</p>
-              <p className="mt-1 text-2xl font-bold text-amber-700">{stats.high}</p>
-            </div>
-          </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <label htmlFor="status-filter" className="text-sm font-medium text-slate-600">Status</label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(event) => handleStatusFilterChange(event.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-400"
-            >
-              <option value="Open">Open</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Resolved">Resolved</option>
-            </select>
+          <div className="mb-4 flex flex-wrap items-center gap-6">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="status-filter" className="text-sm font-medium text-slate-600">Status</label>
+              <select
+                id="status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="h-9 w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-indigo-400"
+              >
+                <option value="All">All</option>
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5 flex-1 min-w-[200px] max-w-sm">
+              <label htmlFor="search" className="text-sm font-medium text-slate-600">Search</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  id="search"
+                  type="text"
+                  placeholder="Search by Incident ID or User Name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-indigo-400"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -455,16 +487,15 @@ const IncidentTriage = () => {
             </div>
 
             <div className="space-y-2">
-              {incidents.map((incident) => {
+              {displayedIncidents.map((incident) => {
                 const severity = severityTone(incident.severity);
                 return (
                   <article
                     key={incident.id}
-                    className={`rounded-lg border px-3 py-3 transition ${
-                      selectedIncidentId === incident.id
-                        ? 'border-indigo-200 bg-indigo-50/40'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
+                    className={`rounded-lg border px-3 py-3 transition ${selectedIncidentId === incident.id
+                      ? 'border-indigo-200 bg-indigo-50/40'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
@@ -476,31 +507,38 @@ const IncidentTriage = () => {
                           </span>
                         </div>
                         <p className="text-sm font-semibold text-slate-900">{incident.title}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">{incident.service} • {formatDateTime(incident.timestamp)}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {incident.service}
+                          {formatDateTime(incident.timestamp) !== 'N/A' && ` • ${formatDateTime(incident.timestamp)}`}
+                        </p>
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedIncidentId(incident.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                        >
-                          <Clock className="h-3.5 w-3.5" /> Select
-                        </button>
+                        {!analysisById[incident.id] ? (
+                          <button
+                            type="button"
+                            onClick={() => handleAnalyze(incident)}
+                            disabled={analyzingId === incident.id}
+                            className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                          >
+                            {analyzingId === incident.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            Analyze
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedAnalysis(prev => ({ ...prev, [incident.id]: !prev[incident.id] }))}
+                            className="inline-flex items-center gap-1 rounded-md bg-indigo-100 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-200"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {expandedAnalysis[incident.id] ? "Hide Analysis" : "Show Analysis"}
+                            {expandedAnalysis[incident.id] ? <ChevronUp className="h-3 w-3 ml-0.5" /> : <ChevronDown className="h-3 w-3 ml-0.5" />}
+                          </button>
+                        )}
 
                         <button
                           type="button"
-                          onClick={() => handleAnalyze(incident)}
-                          disabled={analyzingId === incident.id}
-                          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-                        >
-                          {analyzingId === incident.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                          Analyze
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleResolve(incident)}
+                          onClick={() => openResolveModal(incident)}
                           disabled={resolvingId === incident.id || incident.status.toLowerCase().includes('resolve') || incident.status === 'RESOLVED'}
                           className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
@@ -511,7 +549,7 @@ const IncidentTriage = () => {
                     </div>
 
                     {/* AI Analysis Accordion content */}
-                    {analysisById[incident.id] && (
+                    {analysisById[incident.id] && expandedAnalysis[incident.id] && (
                       <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-4 text-sm animate-in fade-in slide-in-from-top-2">
                         <div>
                           <p className="font-semibold text-indigo-900 mb-1 flex items-center gap-1">
@@ -521,7 +559,7 @@ const IncidentTriage = () => {
                             {analysisById[incident.id].summary || 'No summary provided.'}
                           </p>
                         </div>
-                        
+
                         <div>
                           <p className="font-semibold text-indigo-900 mb-1">Root Cause</p>
                           <p className="text-slate-700 leading-relaxed bg-white/50 p-2.5 rounded-lg border border-indigo-50/50">
@@ -574,15 +612,59 @@ const IncidentTriage = () => {
                 );
               })}
 
-              {!loading && incidents.length === 0 ? (
+              {!loading && displayedIncidents.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
-                  No incidents returned by API for selected status.
+                  No incidents matched your search or filter.
                 </div>
               ) : null}
             </div>
           </div>
         </section>
       </div>
+
+      {/* Resolution Modal */}
+      {resolveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
+            <div className="border-b border-slate-100 p-5">
+              <h3 className="text-lg font-bold text-slate-900">Resolve Incident</h3>
+              <p className="mt-1 text-sm text-slate-500">Provide a resolution note for <span className="font-semibold text-slate-700">{incidentToResolve?.id}</span>.</p>
+            </div>
+            <div className="p-5">
+              <label htmlFor="resolutionNote" className="mb-2 block text-sm font-medium text-slate-700">
+                Resolution Note
+              </label>
+              <textarea
+                id="resolutionNote"
+                rows={4}
+                className="w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                placeholder="Describe how the incident was resolved..."
+                value={resolutionNote}
+                onChange={(e) => setResolutionNote(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 p-5 bg-slate-50 rounded-b-xl">
+              <button
+                type="button"
+                onClick={closeResolveModal}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitResolution}
+                disabled={resolvingId === incidentToResolve?.id || !resolutionNote.trim()}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 transition"
+              >
+                {resolvingId === incidentToResolve?.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

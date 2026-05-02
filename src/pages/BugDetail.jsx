@@ -59,6 +59,11 @@ const formatDate = (value) => {
   }).format(parsed);
 };
 
+const stripBracketPrefix = (str) => {
+  if (typeof str !== 'string') return str;
+  return str.replace(/^\[[^\]]+\]\s*/, '');
+};
+
 const extractLogsArray = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.value)) return payload.value;
@@ -382,7 +387,7 @@ export default function BugDetail() {
   const confidenceColor = confidencePercent >= 80 ? 'emerald' : confidencePercent >= 50 ? 'amber' : 'rose';
 
   // Derive bug metadata from the matched log
-  const bugTitle = matchedLog?.error_message || analysis.root_cause || bugId;
+  const bugTitle = stripBracketPrefix(matchedLog?.error_message || analysis.root_cause || bugId);
   const bugModule = matchedLog?.service_name || (analysis.affected_systems?.[0]) || 'Unknown';
   const bugSeverity = analysis.severity || deriveSeverity(matchedLog?.error_message);
   const bugEnvironment = matchedLog?.environment || 'production';
@@ -457,13 +462,16 @@ export default function BugDetail() {
 
   // "Why AI thinks this" bullets from the analysis
   const whyBullets = [
-    analysis.root_cause && `Root cause identified: ${analysis.root_cause}`,
+    analysis.root_cause && `Root cause identified: ${stripBracketPrefix(analysis.root_cause)}`,
     analysis.affected_systems?.length && `${analysis.affected_systems.length} affected systems: ${analysis.affected_systems.join(', ')}`,
-    analysis.business_impact && `Business impact: ${analysis.business_impact}`,
+    analysis.business_impact && `Business impact: ${stripBracketPrefix(analysis.business_impact)}`,
     analysis.related_errors?.length && `${analysis.related_errors.length} related error patterns found`,
     confidencePercent && `AI confidence score: ${confidencePercent}%`,
     totalLogCount && `Analyzed ${totalLogCount} log entries across ${uniqueServices.length} services`,
   ].filter(Boolean);
+
+  const displayRootCause = stripBracketPrefix(analysis.root_cause || bugTitle);
+  const displayBusinessImpact = stripBracketPrefix(analysis.business_impact || rcaResult?.analysis_summary || `Analysis for ${bugModule} service.`);
 
   const tabs = [
     { key: 'rca', label: 'AI RCA', icon: '✦' },
@@ -629,61 +637,77 @@ export default function BugDetail() {
               <div className="min-w-0 space-y-4">
 
                 {/* Probable Root Cause */}
-                <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm border-l-4 border-l-violet-500">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-lg font-bold text-[#1d2f54]">
-                      <Wrench className="h-5 w-5 text-slate-500" /> Probable Root Cause
-                    </h3>
-                    <div className="flex items-center gap-2 text-[11px]">
-                      <span className="rounded-md bg-violet-100 border border-violet-200 px-2.5 py-1 font-bold text-violet-700">AI Generated</span>
-                      {rcaResult && (
-                        <span className={`rounded-md bg-${confidenceColor}-100 border border-${confidenceColor}-200 px-2.5 py-1 font-bold text-${confidenceColor}-700`}>
-                          {confidencePercent}% Confidence
+                <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
+                  <div className="bg-gradient-to-r from-violet-50/80 to-indigo-50/80 p-5 border-b border-slate-100">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="flex items-center gap-2 text-sm font-bold tracking-wide uppercase text-indigo-900/80">
+                        <Wrench className="h-4 w-4 text-indigo-500" /> Probable Root Cause
+                      </h3>
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span className="flex items-center gap-1 rounded-full bg-violet-100/80 border border-violet-200/60 px-2.5 py-1 font-semibold text-violet-700 shadow-sm">
+                          <Sparkles className="h-3 w-3" /> AI Generated
                         </span>
-                      )}
+                        {rcaResult && (
+                          <span className={`flex items-center gap-1 rounded-full bg-${confidenceColor}-100/80 border border-${confidenceColor}-200/60 px-2.5 py-1 font-semibold text-${confidenceColor}-700 shadow-sm`}>
+                            {confidencePercent}% Confidence
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/60 bg-white/60 p-4 shadow-sm backdrop-blur-sm">
+                      <h4 className="font-mono text-sm font-semibold text-slate-800 leading-relaxed break-words">
+                        {displayRootCause}
+                      </h4>
                     </div>
                   </div>
 
-                  <h4 className="break-words text-xl font-bold leading-snug text-violet-700">
-                    {analysis.root_cause || bugTitle}
-                  </h4>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">
-                    {analysis.business_impact || rcaResult?.analysis_summary || `Analysis for ${bugModule} service.`}
-                  </p>
+                  <div className="p-5">
+                    <p className="text-[15px] leading-relaxed text-slate-700">
+                      {displayBusinessImpact}
+                    </p>
 
-                  {/* Why AI thinks this */}
-                  {whyBullets.length > 0 && (
-                    <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 p-4">
-                      <p className="text-sm font-bold text-violet-700">Why AI thinks this:</p>
-                      <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
-                        {whyBullets.map((bullet, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <Check className="h-4 w-4 mt-0.5 text-emerald-500 shrink-0" />
-                            {bullet}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                    {/* Why AI thinks this */}
+                    {whyBullets.length > 0 && (
+                      <div className="mt-5 rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+                        <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                           Key Findings
+                        </p>
+                        <ul className="mt-3 space-y-2 text-[14px] text-slate-600">
+                          {whyBullets.map((bullet, idx) => (
+                            <li key={idx} className="flex items-start gap-2.5">
+                              <div className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                                <Check className="h-2.5 w-2.5" />
+                              </div>
+                              <span className="leading-snug">{bullet}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div>
-                      <p className="text-xs text-slate-400 font-medium">Confidence</p>
-                      <p className="mt-0.5 flex items-center gap-1 text-lg font-bold text-violet-700">
-                        {rcaResult ? `${confidencePercent}%` : '—'} <RefreshCw className="h-3.5 w-3.5 text-slate-400 cursor-pointer" onClick={handleReAnalyze} />
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400 font-medium">Impact</p>
-                      <p className="mt-0.5 text-lg font-bold text-rose-600">{bugSeverity}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400 font-medium">Detected in</p>
-                      <p className="mt-0.5 text-lg font-bold text-slate-800">{bugModule}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-slate-400 font-medium">Environment</p>
-                      <p className="mt-0.5 text-lg font-bold capitalize text-slate-800">{bugEnvironment}</p>
+                    <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 pt-4 border-t border-slate-100">
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Confidence</p>
+                        <p className="mt-0.5 flex items-center gap-1.5 text-lg font-bold text-slate-800">
+                          {rcaResult ? `${confidencePercent}%` : '—'} 
+                          <button onClick={handleReAnalyze} className="rounded-md p-1 hover:bg-slate-100 transition-colors" title="Re-analyze">
+                            <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+                          </button>
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Impact</p>
+                        <p className="mt-0.5 text-lg font-bold text-rose-600 capitalize">{bugSeverity}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Detected In</p>
+                        <p className="mt-0.5 text-lg font-bold text-slate-800">{bugModule}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Environment</p>
+                        <p className="mt-0.5 text-lg font-bold capitalize text-slate-800">{bugEnvironment}</p>
+                      </div>
                     </div>
                   </div>
                 </article>
