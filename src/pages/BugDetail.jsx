@@ -14,6 +14,7 @@ import {
   Clock,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   Home,
   LifeBuoy,
@@ -135,6 +136,16 @@ export default function BugDetail() {
   /* ─── Analysis timeline tracking ─── */
   const [analysisTimeline, setAnalysisTimeline] = useState([]);
   const [analysisStartTime, setAnalysisStartTime] = useState(null);
+
+  /* ─── Jira transition state ─── */
+  const [jiraTransitions, setJiraTransitions] = useState([]);
+  const [jiraCurrentStatus, setJiraCurrentStatus] = useState('');
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionMessage, setTransitionMessage] = useState('');
+  const [loadingTransitions, setLoadingTransitions] = useState(false);
+
+  // All known Jira statuses for fallback
+  const JIRA_ALL_STATUSES = ['To Do', 'In Progress', 'Done'];
 
   const addTimelineStep = useCallback((event) => {
     setAnalysisStartTime((start) => {
@@ -276,6 +287,44 @@ export default function BugDetail() {
     return () => controller.abort();
   }, [bugId, addTimelineStep]);
 
+  /* ─── Fetch Jira transitions when matchedLog is available ─── */
+  useEffect(() => {
+    if (!matchedLog) return;
+    const jiraKey = matchedLog.metadata?.jira_key ||
+      (String(matchedLog.request_id || '').startsWith('KAN') ? matchedLog.request_id : null);
+    if (!jiraKey) return;
+
+    const currentStatus = matchedLog.status || matchedLog.metadata?.status || 'To Do';
+    setJiraCurrentStatus(currentStatus);
+    setLoadingTransitions(true);
+
+    fetch(`${BUG_RCA_API_BASE}/bug-rca/jira/bugs/${jiraKey}/transitions`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.available_transitions?.length) {
+          // Filter out any transition that points back to the current status
+          const filtered = data.available_transitions.filter(
+            (t) => t.to_status?.toLowerCase() !== currentStatus.toLowerCase()
+          );
+          setJiraTransitions(filtered.length ? filtered : data.available_transitions);
+        } else {
+          // Fallback: show all statuses except current as valid transitions
+          const fallback = JIRA_ALL_STATUSES
+            .filter((s) => s.toLowerCase() !== currentStatus.toLowerCase())
+            .map((s, i) => ({ id: String(i), name: s, to_status: s }));
+          setJiraTransitions(fallback);
+        }
+      })
+      .catch(() => {
+        // API failed — derive transitions from known statuses
+        const fallback = JIRA_ALL_STATUSES
+          .filter((s) => s.toLowerCase() !== currentStatus.toLowerCase())
+          .map((s, i) => ({ id: String(i), name: s, to_status: s }));
+        setJiraTransitions(fallback);
+      })
+      .finally(() => setLoadingTransitions(false));
+  }, [matchedLog]);
+
   /* ─── Ask AI handler ─── */
   const handleAskAI = async (question) => {
     const q = question || chatInput.trim();
@@ -322,6 +371,40 @@ export default function BugDetail() {
       ]);
     } finally {
       setChatLoading(false);
+    }
+  };
+
+  /* ─── Jira transition handler ─── */
+  const handleJiraTransition = async (targetStatus) => {
+    if (!matchedLog) return;
+    const jiraKey = matchedLog.metadata?.jira_key || (String(matchedLog.request_id || '').startsWith('KAN') ? matchedLog.request_id : null);
+    if (!jiraKey) return;
+
+    setIsTransitioning(true);
+    setTransitionMessage('');
+    try {
+      const res = await fetch(`${BUG_RCA_API_BASE}/bug-rca/jira/bugs/${jiraKey}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ target_status: targetStatus }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const newStatus = data.issue?.status || targetStatus;
+        setJiraCurrentStatus(newStatus);
+        // Remove moved-to status and also ensure new current status isn't shown
+        setJiraTransitions((prev) =>
+          prev.filter((t) => t.to_status?.toLowerCase() !== newStatus.toLowerCase())
+        );
+        setTransitionMessage(`✓ ${data.message || `Moved to ${targetStatus}`}`);
+      } else {
+        setTransitionMessage(`✗ ${data.detail || 'Transition failed'}`);
+      }
+    } catch {
+      setTransitionMessage('✗ Unable to reach Jira API');
+    } finally {
+      setIsTransitioning(false);
+      setTimeout(() => setTransitionMessage(''), 4000);
     }
   };
 
@@ -564,6 +647,7 @@ export default function BugDetail() {
           </div>
         </div>
 
+
         <div className="grid gap-5 items-start lg:grid-cols-[240px_1fr]">
 
           {/* ════════════════ SIDEBAR ════════════════ */}
@@ -770,6 +854,98 @@ export default function BugDetail() {
 
               {/* ──── Right Column ──── */}
               <div className="min-w-0 space-y-4">
+
+                {/* Jira Status Card — shown only for Jira bugs */}
+                {matchedLog?.metadata?.jira_key && (
+                  <article className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+                    <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 px-5 py-3 border-b border-blue-100">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-bold uppercase tracking-wide text-blue-800">Jira Status</h3>
+                        <span className="rounded bg-white border border-blue-200 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                          {matchedLog.metadata.jira_key}
+                        </span>
+                      </div>
+                      <a
+                        href={matchedLog.metadata.jira_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                      >
+                        <ExternalLink className="h-3 w-3" /> View in Jira
+                      </a>
+                    </div>
+
+                    <div className="p-5">
+                      {/* Current Status */}
+                      <div className="mb-4 flex items-center gap-3">
+                        <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Current Status</p>
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          (jiraCurrentStatus || matchedLog.status) === 'Done' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                          (jiraCurrentStatus || matchedLog.status) === 'In Progress' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                          'bg-slate-100 text-slate-700 border border-slate-200'
+                        }`}>
+                          {jiraCurrentStatus || matchedLog.status || 'To Do'}
+                        </span>
+                      </div>
+
+                      {/* Transition Buttons */}
+                      {jiraTransitions.length > 0 ? (
+                        <div>
+                          <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Move To</p>
+                          <div className="flex flex-wrap gap-2.5">
+                            {jiraTransitions.map((t) => {
+                              const styles =
+                                t.to_status === 'Done'
+                                  ? {
+                                      base: 'bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700 shadow-emerald-200 ring-emerald-300',
+                                      icon: '✓',
+                                    }
+                                  : t.to_status === 'In Progress'
+                                  ? {
+                                      base: 'bg-blue-600 border-blue-700 text-white hover:bg-blue-700 shadow-blue-200 ring-blue-300',
+                                      icon: '▶',
+                                    }
+                                  : {
+                                      base: 'bg-slate-600 border-slate-700 text-white hover:bg-slate-700 shadow-slate-200 ring-slate-300',
+                                      icon: '↩',
+                                    };
+                              return (
+                                <button
+                                  key={t.id}
+                                  type="button"
+                                  disabled={isTransitioning}
+                                  onClick={() => handleJiraTransition(t.to_status)}
+                                  className={`group inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition-all duration-150 hover:shadow-md active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${styles.base}`}
+                                >
+                                  {isTransitioning ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin opacity-80" />
+                                  ) : (
+                                    <span className="text-[13px] leading-none">{styles.icon}</span>
+                                  )}
+                                  {t.to_status}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : loadingTransitions ? (
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Loading transitions...</span>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No transitions available for this status.</p>
+                      )}
+
+                      {/* Feedback message */}
+                      {transitionMessage && (
+                        <p className={`mt-3 text-sm font-semibold ${transitionMessage.startsWith('✓') ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {transitionMessage}
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                )}
 
                 {/* AI Investigation Flow */}
                 <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

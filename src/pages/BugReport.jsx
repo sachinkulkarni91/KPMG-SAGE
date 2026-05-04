@@ -5,6 +5,7 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
   FileText,
   Filter,
   Home,
@@ -73,10 +74,14 @@ const toneBySeverity = (value) => {
 const toneByStatus = (value) => {
   const key = String(value || '').toLowerCase();
 
-  if (key.includes('progress')) return 'bg-indigo-100 text-indigo-600';
-  if (key.includes('resolved') || key.includes('closed')) return 'bg-emerald-100 text-emerald-600';
+  if (key === 'to do') return 'bg-slate-100 text-slate-700';
+  if (key === 'in progress') return 'bg-blue-100 text-blue-700';
+  if (key === 'in review') return 'bg-amber-100 text-amber-700';
+  if (key === 'done') return 'bg-emerald-100 text-emerald-700';
+  if (key.includes('progress')) return 'bg-blue-100 text-blue-700';
+  if (key.includes('resolved') || key.includes('closed')) return 'bg-emerald-100 text-emerald-700';
   if (key.includes('rca')) return 'bg-teal-100 text-teal-700';
-  return 'bg-sky-100 text-sky-600';
+  return 'bg-sky-100 text-sky-700';
 };
 
 const severityRank = (value) => {
@@ -283,6 +288,13 @@ const BugReport = () => {
   const [serviceInfo, setServiceInfo] = useState(null);
   const [serviceHealth, setServiceHealth] = useState(null);
 
+  // Jira integration state
+  const [jiraStatuses, setJiraStatuses] = useState(['All', 'To Do', 'In Progress', 'Done']);
+  const [isJiraDataset, setIsJiraDataset] = useState(false);
+  // Map of jiraKey -> available transitions for list-level inline transitions
+  const [jiraTransitionsMap, setJiraTransitionsMap] = useState({});
+  const [transitioning, setTransitioning] = useState({});
+
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [assistantLastDepth, setAssistantLastDepth] = useState('detailed');
@@ -312,6 +324,19 @@ const BugReport = () => {
         }
       } catch {
         // Non-blocking metadata fetch.
+      }
+    };
+
+    const fetchJiraStatuses = async () => {
+      try {
+        const res = await fetch(`${BUG_RCA_API_BASE}/bug-rca/jira/statuses`, { signal: controller.signal });
+        if (res.ok) {
+          const data = await res.json();
+          const statuses = Array.isArray(data.statuses) ? data.statuses : [];
+          if (statuses.length) setJiraStatuses(['All', ...statuses]);
+        }
+      } catch {
+        // fallback defaults already set
       }
     };
 
@@ -356,6 +381,7 @@ const BugReport = () => {
 
         const firstDatasetId = firstValue(datasets[0]?.id, '');
         setSelectedDatasetId(firstDatasetId);
+        setIsJiraDataset(firstDatasetId === 'jira-bugs');
 
         if (firstDatasetId) {
           await fetchDataset(firstDatasetId);
@@ -372,6 +398,7 @@ const BugReport = () => {
     };
 
     fetchServiceMeta();
+    fetchJiraStatuses();
     loadInitialData();
 
     return () => controller.abort();
@@ -416,6 +443,8 @@ const BugReport = () => {
     const datasetId = event.target.value;
     setSelectedDatasetId(datasetId);
     setAnalysisResult(null);
+    setIsJiraDataset(datasetId === 'jira-bugs');
+    setStatusFilter('All');
 
     if (!datasetId) return;
 
@@ -445,6 +474,53 @@ const BugReport = () => {
     () => visibleLogs.map((entry) => entry.rawLog).filter(Boolean),
     [visibleLogs],
   );
+
+  // Fetch transitions for all visible Jira bugs
+  useEffect(() => {
+    if (!isJiraDataset) return;
+    const jiraKeys = visibleLogs
+      .map((b) => b.rawLog?.metadata?.jira_key)
+      .filter(Boolean);
+
+    jiraKeys.forEach((key) => {
+      if (jiraTransitionsMap[key]) return; // already fetched
+      fetch(`${BUG_RCA_API_BASE}/bug-rca/jira/bugs/${key}/transitions`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.available_transitions) {
+            setJiraTransitionsMap((prev) => ({ ...prev, [key]: data.available_transitions }));
+          }
+        })
+        .catch(() => {});
+    });
+  }, [isJiraDataset, visibleLogs]);
+
+  const handleCardTransition = async (e, bugId, jiraKey, targetStatus) => {
+    e.stopPropagation(); // prevent card click navigation
+    setTransitioning((prev) => ({ ...prev, [jiraKey]: true }));
+    try {
+      const res = await fetch(`${BUG_RCA_API_BASE}/bug-rca/jira/bugs/${jiraKey}/transition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ target_status: targetStatus }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Update the bug status locally
+        setBugLogs((prev) =>
+          prev.map((b) =>
+            b.id === bugId ? { ...b, status: data.issue?.status || targetStatus } : b
+          )
+        );
+        // Refresh transitions for this key
+        setJiraTransitionsMap((prev) => ({ ...prev, [jiraKey]: undefined }));
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setTransitioning((prev) => ({ ...prev, [jiraKey]: false }));
+    }
+  };
 
   const pushHistory = (mode, result) => {
     setAnalysisHistory((current) => [
@@ -707,9 +783,6 @@ const BugReport = () => {
                 <div>
                   <h2 className="text-2xl sm:text-[32px] leading-tight font-sans font-bold text-[#1e293b]">Bug Logs Summary & RCA</h2>
                   <p className="mt-1 text-sm text-slate-500">Get AI-powered summaries and root cause analysis from bug logs.</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Service: {firstValue(serviceInfo?.service, 'bug_rca')} | Health: {String(healthStatus)}
-                  </p>
                 </div>
               </div>
 
@@ -721,153 +794,133 @@ const BugReport = () => {
               </button>
             </div>
 
-            <div className="relative mb-6 select-none overflow-hidden rounded-xl bg-gradient-to-br from-[#5b21b6] via-[#6d28d9] to-[#8b5cf6] p-4 text-white shadow-[0_18px_45px_rgba(91,33,182,0.35)] sm:p-5">
-              <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-16 left-12 h-48 w-48 rounded-full bg-fuchsia-300/20 blur-3xl" />
 
-              <div className="relative z-10 grid gap-3 lg:grid-cols-[1.1fr_1fr] lg:gap-4">
-                <div>
-                  <div className="flex items-start gap-4">
-                    <div className="mt-1 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/25 bg-white/15">
-                      <Sparkles className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-100">AI Risk Signal</p>
-                      <h3 className="mt-1 text-3xl font-semibold leading-tight">AI Analysis Ready</h3>
-                      
-                    </div>
-                  </div>
 
-                  <div className="mt-3 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 backdrop-blur-sm">
-                    <div className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.14em] text-violet-100">
-                      <span>AI Accuracy</span>
-                      <span>{analysisMetrics.accuracy}%</span>
-                    </div>
-                    <div className="h-2.5 rounded-full bg-white/20">
-                      <div className="h-2.5 rounded-full bg-white" style={{ width: `${analysisMetrics.accuracy}%` }} />
-                    </div>
-                    <p className="mt-2 text-xs text-violet-100">High confidence pattern match across active clusters.</p>
+            <div className="space-y-6 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Total Bugs</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">{visibleLogs.length}</div>
                   </div>
                 </div>
-
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-2 lg:gap-2">
-                  <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-violet-100">Logs Analyzed</p>
-                    <p className="mt-1 text-[34px] font-semibold leading-none">{analysisMetrics.logsAnalyzed.toLocaleString()}</p>
-                    <p className="mt-1 text-xs text-violet-100">+{analysisMetrics.logsTrend}% vs last 7 days</p>
-                  </div>
-
-                  <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm">
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-violet-100">Incidents Linked</p>
-                    <p className="mt-1 text-[34px] font-semibold leading-none">{analysisMetrics.incidentsLinked}</p>
-                    <p className="mt-1 text-xs text-violet-100">+{analysisMetrics.incidentsTrend}% vs last 7 days</p>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-xl border border-white/20 bg-white/10 px-3 py-2.5 backdrop-blur-sm sm:col-span-2 lg:col-span-2">
-                    <div className="min-w-0">
-                      <p className="text-[11px] uppercase tracking-[0.14em] text-violet-100">Confidence</p>
-                      <p className="mt-1 inline-flex whitespace-nowrap rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-white">High Confidence</p>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Critical / High</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">
+                      {visibleLogs.filter(b => b.severity?.toLowerCase() === 'critical' || b.severity?.toLowerCase() === 'high').length}
                     </div>
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white/20 bg-white/10">
-                      <Bot className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">To Do</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">
+                      {visibleLogs.filter(b => b.status?.toLowerCase() === 'to do' || b.status?.toLowerCase() === 'new').length}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">In Progress</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">
+                      {visibleLogs.filter(b => b.status?.toLowerCase() === 'in progress').length}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                  <div className="text-sm font-medium text-slate-600">Resolved / Done</div>
+                  <div className="mt-2 flex items-end gap-2">
+                    <div className="text-3xl font-bold text-slate-900">
+                      {visibleLogs.filter(b => b.status?.toLowerCase() === 'done' || b.status?.toLowerCase() === 'resolved').length}
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mb-3 grid gap-3 md:grid-cols-[1fr_auto]">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search bug logs by ID, service, module, or keyword..."
-                  className="h-11 w-full border border-slate-200 bg-white pl-10 pr-3 text-[15px] text-slate-700 outline-none transition focus:border-[#6B46FF]"
-                />
+              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+                <div className="space-y-4">
+                  <div className="relative flex items-center gap-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search bug logs by ID, service, module, or keyword..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                      />
+                    </div>
+                    <div className="w-1/3">
+                      <select
+                        value={selectedDatasetId}
+                        onChange={handleDatasetChange}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      >
+                        <option value="" disabled>Select Dataset...</option>
+                        {datasetOptions.map((dataset) => (
+                          <option key={dataset.id} value={dataset.id}>
+                            {dataset.name || dataset.id}
+                          </option>
+                        ))}
+                        <option value="uploaded">Uploaded logs (manual)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {jiraStatuses.map((status) => (
+                        <option key={status} value={status}>Status: {status}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={severityFilter}
+                      onChange={(e) => setSeverityFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {['All', 'Critical', 'High', 'Medium', 'Low'].map((severity) => (
+                        <option key={severity} value={severity}>Severity: {severity}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={serviceFilter}
+                      onChange={(e) => setServiceFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {serviceOptions.map((service) => (
+                        <option key={service} value={service}>Service: {service}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={dateFilter}
+                      onChange={(e) => setDateFilter(e.target.value)}
+                      className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="All">Date Range: All</option>
+                      <option value="24h">Date Range: Past 24h</option>
+                      <option value="7d">Date Range: Past 7 days</option>
+                      <option value="30d">Date Range: Past 30 days</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatusFilter('All');
+                        setSeverityFilter('All');
+                        setServiceFilter('All');
+                        setDateFilter('All');
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      <Filter className="h-4 w-4" />
+                      Reset
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={triggerStandardAnalysis}
-                disabled={isLoading || isAnalyzing}
-                className="h-11 border border-violet-600 bg-violet-600 px-5 text-[15px] font-semibold text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isAnalyzing ? 'Analyzing...' : 'Generate RCA'} ✨
-              </button>
-            </div>
-
-            <div className="mb-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Dataset</label>
-              <select
-                value={selectedDatasetId}
-                onChange={handleDatasetChange}
-                className="h-10 w-full border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#6B46FF]"
-              >
-                {!datasetOptions.length ? <option value="">No datasets available</option> : null}
-                {datasetOptions.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.name || dataset.id}
-                  </option>
-                ))}
-                <option value="uploaded">Uploaded logs (manual)</option>
-              </select>
-            </div>
-
-            <div className="mb-6 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-              <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
-                className="h-9 border border-slate-200 px-3.5 text-sm text-slate-600"
-              >
-                {['All', 'RCA Generated', 'In Progress', 'Resolved', 'New'].map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-
-              <select
-                value={severityFilter}
-                onChange={(event) => setSeverityFilter(event.target.value)}
-                className="h-9 border border-slate-200 px-3.5 text-sm text-slate-600"
-              >
-                {['All', 'Critical', 'High', 'Medium', 'Low'].map((severity) => (
-                  <option key={severity} value={severity}>{severity}</option>
-                ))}
-              </select>
-
-              <select
-                value={serviceFilter}
-                onChange={(event) => setServiceFilter(event.target.value)}
-                className="h-9 border border-slate-200 px-3.5 text-sm text-slate-600"
-              >
-                {serviceOptions.map((service) => (
-                  <option key={service} value={service}>{service}</option>
-                ))}
-              </select>
-
-              <select
-                value={dateFilter}
-                onChange={(event) => setDateFilter(event.target.value)}
-                className="h-9 border border-slate-200 px-3.5 text-sm text-slate-600"
-              >
-                <option value="All">Date Range</option>
-                <option value="24h">Past 24h</option>
-                <option value="7d">Past 7 days</option>
-                <option value="30d">Past 30 days</option>
-              </select>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setStatusFilter('All');
-                  setSeverityFilter('All');
-                  setServiceFilter('All');
-                  setDateFilter('All');
-                }}
-                className="inline-flex h-9 items-center justify-center gap-2 border border-slate-200 px-3.5 text-sm text-slate-600 hover:bg-slate-50"
-              >
-                <Filter className="h-4 w-4" />
-                Reset
-              </button>
             </div>
 
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -897,6 +950,8 @@ const BugReport = () => {
               {visibleLogs.map((bug) => {
                 const severityTone = toneBySeverity(bug.severity);
                 const statusTone = toneByStatus(bug.status);
+                const jiraKey = bug.rawLog?.metadata?.jira_key;
+                const jiraUrl = bug.rawLog?.metadata?.jira_url;
 
                 return (
                   <article
@@ -904,13 +959,18 @@ const BugReport = () => {
                     onClick={() => {
                       navigate(`/bug-report/${bug.id}`);
                     }}
-                    className="flex cursor-pointer flex-col gap-2 border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 sm:flex-row sm:items-start"
+                    className="flex cursor-pointer flex-col gap-2 border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:shadow-sm sm:flex-row sm:items-start"
                   >
                     <div className={`mt-2 h-2 w-2 shrink-0 rounded-full ${severityTone.dot}`} />
 
                     <div className="min-w-0 flex-1">
                       <div className="mb-1.5 flex flex-wrap items-center gap-2">
                         <span className="text-xl font-bold text-[#1e293b]">{bug.id}</span>
+                        {jiraKey && (
+                          <span className="rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[11px] font-semibold text-blue-600">
+                            {jiraKey}
+                          </span>
+                        )}
                         <span className="text-xs text-slate-500">{bug.module}</span>
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${severityTone.chip}`}>
                           {bug.severity}
@@ -920,12 +980,45 @@ const BugReport = () => {
                       <p className="text-sm text-slate-500">{bug.summary}</p>
                     </div>
 
-                    <div className="flex items-center justify-between gap-3 sm:min-w-[195px] sm:flex-col sm:items-end">
+                    <div className="flex items-center justify-between gap-3 sm:min-w-[210px] sm:flex-col sm:items-end">
                       <p className="text-xs text-slate-500">{bug.dateTime}</p>
-                      <div className="flex items-center gap-3">
-                        <span className={`px-2 py-1 text-xs font-semibold ${statusTone}`}>{bug.status}</span>
+                      <div className="flex items-center gap-2">
+                        {jiraUrl && (
+                          <a
+                            href={jiraUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Jira
+                          </a>
+                        )}
+                        <span className={`rounded px-2 py-1 text-xs font-semibold ${statusTone}`}>{bug.status}</span>
                         <ChevronRight className="h-4 w-4 text-slate-400" />
                       </div>
+
+                      {/* Inline Jira transition buttons */}
+                      {jiraKey && jiraTransitionsMap[jiraKey]?.length > 0 && (
+                        <div className="flex flex-wrap items-center justify-end gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                          {jiraTransitionsMap[jiraKey].map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              disabled={transitioning[jiraKey]}
+                              onClick={(e) => handleCardTransition(e, bug.id, jiraKey, t.to_status)}
+                              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50"
+                            >
+                              {transitioning[jiraKey] ? (
+                                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-slate-400 border-t-transparent inline-block" />
+                              ) : (
+                                '→'
+                              )}
+                              {t.to_status}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </article>
                 );
